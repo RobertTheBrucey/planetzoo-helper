@@ -1,0 +1,1206 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Planet Zoo Habitat Planner</title>
+<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700&family=Crimson+Pro:ital,wght@0,300;0,400;0,500;1,300;1,400&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0d1117;
+    --bg2: #161b22;
+    --bg3: #1c2330;
+    --card: #1c2330;
+    --card-hover: #232d3f;
+    --border: #2a3448;
+    --border-light: #334466;
+    --gold: #c9a84c;
+    --gold-light: #e8c97a;
+    --gold-dim: #8a6a2a;
+    --green: #3a7d44;
+    --green-light: #4e9e5a;
+    --red: #8b2020;
+    --red-light: #b52e2e;
+    --text: #d4c9b0;
+    --text-dim: #7a8399;
+    --text-bright: #f0e8d0;
+    --accent: #2d5a8e;
+    --accent-light: #3a74b5;
+    --selected: #1a3a5c;
+    --selected-border: #4a90d9;
+    --tag-bg: #1a2535;
+    --tag-border: #2a3f5c;
+    --incompatible: rgba(139,32,32,0.15);
+    --incompatible-border: #5a1a1a;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Crimson Pro', Georgia, serif;
+    font-size: 16px;
+    line-height: 1.5;
+    min-height: 100vh;
+  }
+
+  /* Grain overlay */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.04'/%3E%3C/svg%3E");
+    pointer-events: none;
+    z-index: 9999;
+    opacity: 0.4;
+  }
+
+  header {
+    background: linear-gradient(180deg, #0a0e14 0%, var(--bg) 100%);
+    border-bottom: 1px solid var(--gold-dim);
+    padding: 16px 24px;
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+  }
+
+  header h1 {
+    font-family: 'Cinzel', serif;
+    font-size: 1.3rem;
+    font-weight: 600;
+    color: var(--gold);
+    letter-spacing: 0.08em;
+    text-shadow: 0 0 30px rgba(201,168,76,0.3);
+  }
+
+  header p {
+    color: var(--text-dim);
+    font-size: 0.85rem;
+    font-style: italic;
+    margin-left: auto;
+  }
+
+  .layout {
+    display: grid;
+    grid-template-columns: 340px 1fr;
+    height: calc(100vh - 65px);
+    overflow: hidden;
+  }
+
+  /* === LEFT PANEL === */
+  .left-panel {
+    background: var(--bg2);
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  .filters-section {
+    padding: 16px;
+    border-bottom: 1px solid var(--border);
+    overflow-y: auto;
+    flex-shrink: 0;
+    max-height: 50vh;
+  }
+
+  .section-title {
+    font-family: 'Cinzel', serif;
+    font-size: 0.65rem;
+    font-weight: 600;
+    letter-spacing: 0.15em;
+    color: var(--gold-dim);
+    text-transform: uppercase;
+    margin-bottom: 10px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .section-title::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: var(--border);
+  }
+
+  .options-row {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin-bottom: 14px;
+  }
+
+  .toggle-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    user-select: none;
+  }
+
+  .toggle-row input[type="checkbox"] {
+    appearance: none;
+    width: 28px;
+    height: 16px;
+    background: var(--bg3);
+    border: 1px solid var(--border-light);
+    border-radius: 8px;
+    cursor: pointer;
+    position: relative;
+    transition: background 0.2s;
+    flex-shrink: 0;
+  }
+  .toggle-row input[type="checkbox"]::after {
+    content: '';
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 10px;
+    height: 10px;
+    background: var(--text-dim);
+    border-radius: 50%;
+    transition: transform 0.2s, background 0.2s;
+  }
+  .toggle-row input[type="checkbox"]:checked {
+    background: var(--green);
+    border-color: var(--green-light);
+  }
+  .toggle-row input[type="checkbox"]:checked::after {
+    transform: translateX(12px);
+    background: #fff;
+  }
+
+  .toggle-row label {
+    font-size: 0.82rem;
+    color: var(--text-dim);
+    cursor: pointer;
+  }
+
+  .filter-group {
+    margin-bottom: 14px;
+  }
+
+  .tag-group {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px;
+  }
+
+  .tag {
+    padding: 4px 9px;
+    border-radius: 3px;
+    font-size: 0.72rem;
+    font-family: 'Cinzel', serif;
+    letter-spacing: 0.04em;
+    cursor: pointer;
+    border: 1px solid var(--tag-border);
+    background: var(--tag-bg);
+    color: var(--text-dim);
+    transition: all 0.15s;
+    user-select: none;
+  }
+  .tag:hover { background: var(--bg3); color: var(--text); }
+  .tag.active {
+    background: var(--selected);
+    border-color: var(--selected-border);
+    color: var(--text-bright);
+  }
+
+  /* Continent icons */
+  .continent-tag {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+  }
+  .continent-icon {
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+  .ci-europe   { background: #5b8dd9; }
+  .ci-namerica { background: #4aaa6a; }
+  .ci-samerica { background: #88b843; }
+  .ci-africa   { background: #d9852e; }
+  .ci-asia     { background: #cc4444; }
+  .ci-oceania  { background: #9b6cd9; }
+
+  /* Biome icons */
+  .biome-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    display: inline-block;
+    flex-shrink: 0;
+  }
+  .bd-grassland  { background: #6aad3a; }
+  .bd-desert     { background: #d9a030; }
+  .bd-tropical   { background: #2ecc71; }
+  .bd-temperate  { background: #4ab3c8; }
+  .bd-taiga      { background: #2e6fa3; }
+  .bd-tundra     { background: #9bd4e8; }
+  .bd-aquatic    { background: #2980b9; }
+
+  /* === ANIMAL LIST === */
+  .animal-list-section {
+    flex: 1;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .list-header {
+    padding: 10px 16px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
+  }
+
+  .search-box {
+    flex: 1;
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 6px 10px;
+    color: var(--text);
+    font-family: 'Crimson Pro', serif;
+    font-size: 0.9rem;
+    outline: none;
+  }
+  .search-box:focus { border-color: var(--accent-light); }
+  .search-box::placeholder { color: var(--text-dim); }
+
+  .clear-btn {
+    padding: 6px 12px;
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--text-dim);
+    font-size: 0.75rem;
+    font-family: 'Cinzel', serif;
+    letter-spacing: 0.05em;
+    cursor: pointer;
+    border-radius: 3px;
+    transition: all 0.15s;
+    white-space: nowrap;
+  }
+  .clear-btn:hover { border-color: var(--red-light); color: var(--red-light); }
+
+  .animal-scroll {
+    overflow-y: auto;
+    flex: 1;
+    padding: 8px;
+  }
+
+  .animal-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 10px;
+    border-radius: 4px;
+    cursor: pointer;
+    border: 1px solid transparent;
+    transition: all 0.15s;
+    margin-bottom: 2px;
+  }
+  .animal-item:hover:not(.incompatible-item) {
+    background: var(--card-hover);
+    border-color: var(--border);
+  }
+  .animal-item.selected {
+    background: var(--selected);
+    border-color: var(--selected-border);
+  }
+  .animal-item.incompatible-item {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+  .animal-item.exhibit {
+    border-style: dashed;
+    border-color: var(--border);
+  }
+
+  .animal-img-thumb {
+    width: 36px;
+    height: 36px;
+    border-radius: 3px;
+    object-fit: cover;
+    background: var(--bg3);
+    flex-shrink: 0;
+  }
+
+  .animal-name-block {
+    flex: 1;
+    min-width: 0;
+  }
+  .animal-common {
+    font-size: 0.88rem;
+    color: var(--text-bright);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .animal-latin {
+    font-size: 0.72rem;
+    font-style: italic;
+    color: var(--text-dim);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .animal-icons {
+    display: flex;
+    gap: 4px;
+    flex-shrink: 0;
+  }
+
+  .icon-heart { color: #d9534f; font-size: 0.75rem; }
+  .icon-shoe  { color: var(--text-dim); font-size: 0.75rem; }
+
+  /* === RIGHT PANEL === */
+  .right-panel {
+    overflow-y: auto;
+    padding: 24px;
+    background: var(--bg);
+  }
+
+  .panel-title {
+    font-family: 'Cinzel', serif;
+    font-size: 1.1rem;
+    font-weight: 600;
+    color: var(--gold);
+    letter-spacing: 0.06em;
+    margin-bottom: 20px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid var(--gold-dim);
+    text-shadow: 0 0 20px rgba(201,168,76,0.2);
+  }
+
+  .empty-state {
+    color: var(--text-dim);
+    font-style: italic;
+    font-size: 0.95rem;
+    text-align: center;
+    padding: 40px 20px;
+    line-height: 1.8;
+  }
+
+  /* Requirements summary */
+  .req-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 12px;
+    margin-bottom: 24px;
+  }
+
+  .req-card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 14px;
+  }
+  .req-card-title {
+    font-family: 'Cinzel', serif;
+    font-size: 0.6rem;
+    letter-spacing: 0.15em;
+    color: var(--gold-dim);
+    text-transform: uppercase;
+    margin-bottom: 10px;
+  }
+  .req-badges {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px;
+  }
+  .req-badge {
+    padding: 3px 8px;
+    border-radius: 3px;
+    font-size: 0.75rem;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+  .req-badge.compatible {
+    background: rgba(58,125,68,0.2);
+    border: 1px solid rgba(78,158,90,0.4);
+    color: #6ec87a;
+  }
+  .req-badge.required {
+    background: rgba(45,90,142,0.2);
+    border: 1px solid rgba(58,116,181,0.4);
+    color: #6aaae0;
+  }
+  .req-badge.warn {
+    background: rgba(180,120,30,0.2);
+    border: 1px solid rgba(200,150,50,0.4);
+    color: #d9a040;
+  }
+
+  /* Selected animals list */
+  .selected-header {
+    font-family: 'Cinzel', serif;
+    font-size: 0.65rem;
+    font-weight: 600;
+    letter-spacing: 0.15em;
+    color: var(--gold-dim);
+    text-transform: uppercase;
+    margin-bottom: 12px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .selected-header::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: var(--border);
+  }
+
+  .selected-animals {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-bottom: 28px;
+  }
+
+  .selected-animal-card {
+    background: var(--card);
+    border: 1px solid var(--selected-border);
+    border-radius: 6px;
+    padding: 12px 14px;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    position: relative;
+    animation: slideIn 0.2s ease;
+  }
+
+  @keyframes slideIn {
+    from { opacity: 0; transform: translateX(-8px); }
+    to { opacity: 1; transform: translateX(0); }
+  }
+
+  .selected-animal-img {
+    width: 52px;
+    height: 52px;
+    border-radius: 4px;
+    object-fit: cover;
+    background: var(--bg3);
+    flex-shrink: 0;
+  }
+
+  .selected-animal-info {
+    flex: 1;
+  }
+  .selected-animal-name {
+    font-size: 1rem;
+    color: var(--text-bright);
+    font-weight: 500;
+  }
+  .selected-animal-latin {
+    font-size: 0.8rem;
+    font-style: italic;
+    color: var(--text-dim);
+    margin-bottom: 6px;
+  }
+
+  .habitat-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+  }
+
+  .habitat-chip {
+    padding: 2px 7px;
+    border-radius: 3px;
+    font-size: 0.68rem;
+    font-family: 'Cinzel', serif;
+    letter-spacing: 0.03em;
+  }
+  .hc-continent {
+    background: rgba(45,90,142,0.25);
+    border: 1px solid rgba(74,144,217,0.3);
+    color: #7ab8e0;
+  }
+  .hc-biome {
+    background: rgba(58,125,68,0.2);
+    border: 1px solid rgba(78,158,90,0.3);
+    color: #7ed08a;
+  }
+
+  .remove-btn {
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--text-dim);
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    cursor: pointer;
+    font-size: 0.8rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    transition: all 0.15s;
+  }
+  .remove-btn:hover { border-color: var(--red-light); color: var(--red-light); }
+
+  /* Enrichment groups */
+  .enrichment-section {
+    margin-bottom: 24px;
+  }
+  .enrichment-group {
+    background: rgba(201,168,76,0.06);
+    border: 1px solid rgba(201,168,76,0.2);
+    border-radius: 6px;
+    padding: 12px 14px;
+    margin-bottom: 8px;
+  }
+  .enrichment-group-title {
+    font-size: 0.75rem;
+    font-family: 'Cinzel', serif;
+    color: var(--gold);
+    letter-spacing: 0.05em;
+    margin-bottom: 6px;
+  }
+  .enrichment-members {
+    font-size: 0.82rem;
+    color: var(--text-dim);
+  }
+  .enrichment-active {
+    color: var(--gold-light);
+  }
+
+  /* Scrollbar */
+  ::-webkit-scrollbar { width: 6px; }
+  ::-webkit-scrollbar-track { background: var(--bg); }
+  ::-webkit-scrollbar-thumb { background: var(--border-light); border-radius: 3px; }
+  ::-webkit-scrollbar-thumb:hover { background: var(--gold-dim); }
+
+  .count-badge {
+    background: var(--selected);
+    border: 1px solid var(--selected-border);
+    color: var(--text-bright);
+    border-radius: 10px;
+    padding: 1px 7px;
+    font-size: 0.7rem;
+    font-family: 'Cinzel', serif;
+    margin-left: 4px;
+  }
+
+  .compat-warning {
+    background: rgba(139,32,32,0.12);
+    border: 1px solid var(--incompatible-border);
+    border-radius: 4px;
+    padding: 6px 10px;
+    font-size: 0.78rem;
+    color: #e07070;
+    margin-bottom: 8px;
+    display: flex;
+    gap: 6px;
+    align-items: flex-start;
+  }
+
+  .guest-walkthrough-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 8px;
+    border-radius: 3px;
+    font-size: 0.68rem;
+    background: rgba(155,108,217,0.15);
+    border: 1px solid rgba(155,108,217,0.3);
+    color: #c49de0;
+    font-family: 'Cinzel', serif;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div>
+    <h1>🦁 Planet Zoo Habitat Planner</h1>
+  </div>
+  <p>Select animals to plan your habitat</p>
+</header>
+
+<div class="layout">
+  <!-- LEFT PANEL -->
+  <div class="left-panel">
+    <div class="filters-section">
+
+      <div class="section-title">Options</div>
+      <div class="options-row" id="options-row"></div>
+
+      <div class="filter-group">
+        <div class="section-title">Content Packs</div>
+        <div class="tag-group" id="pack-filters"></div>
+      </div>
+
+      <div class="filter-group">
+        <div class="section-title">Biomes</div>
+        <div class="tag-group" id="biome-filters"></div>
+      </div>
+
+      <div class="filter-group">
+        <div class="section-title">Continents</div>
+        <div class="tag-group" id="continent-filters"></div>
+      </div>
+
+    </div>
+
+    <div class="animal-list-section">
+      <div class="list-header">
+        <input type="text" class="search-box" id="search-box" placeholder="Search animals…">
+        <button class="clear-btn" id="clear-btn">Clear All</button>
+      </div>
+      <div class="animal-scroll" id="animal-list"></div>
+    </div>
+  </div>
+
+  <!-- RIGHT PANEL -->
+  <div class="right-panel" id="right-panel">
+    <div class="panel-title">Habitat Requirements</div>
+    <div class="empty-state">
+      Click on animals in the list to add them to your habitat.<br>
+      The planner will show combined requirements and compatibility.
+    </div>
+  </div>
+</div>
+
+<script>
+// ===== DATA =====
+const CONTINENTS = ['Africa','Asia','Europe','North America','South America','Oceania'];
+const BIOMES = ['Aquatic','Desert','Grassland','Taiga','Temperate','Tropical','Tundra'];
+const PACKS = ['Standard','Arid','Africa','Zookeepers','Barnyard','Europe','North America',
+  'Conservation','Arctic','Wetlands','Tropical','Southeast Asia','Grasslands',
+  'South America','Twilight','Aquatic','Australia','Eurasia','Deluxe','Oceania'];
+
+const CONTINENT_COLORS = {
+  'Europe': 'ci-europe','North America': 'ci-namerica','South America': 'ci-samerica',
+  'Africa': 'ci-africa','Asia': 'ci-asia','Oceania': 'ci-oceania'
+};
+const BIOME_COLORS = {
+  'Aquatic': 'bd-aquatic','Desert': 'bd-desert','Grassland': 'bd-grassland',
+  'Taiga': 'bd-taiga','Temperate': 'bd-temperate','Tropical': 'bd-tropical','Tundra': 'bd-tundra'
+};
+
+// Animal data - scraped and structured
+const ANIMALS = [
+  {id:'aardvark',name:'Aardvark',latin:'Orycteropus afer',pack:'Standard',continents:['Africa'],biomes:['Grassland','Desert'],img:'orycteropus_afer',enrichedBy:['Meerkat'],guestWalk:true,exhibit:false},
+  {id:'addax',name:'Addax',latin:'Addax nasomaculatus',pack:'Arid',continents:['Africa'],biomes:['Desert','Grassland'],img:'addax_nasomaculatus',enrichedBy:[],guestWalk:false,exhibit:false},
+  {id:'african_buffalo',name:'African Buffalo',latin:'Syncerus caffer caffer',pack:'Standard',continents:['Africa'],biomes:['Grassland','Tropical'],img:'syncerus_caffer_caffer',enrichedBy:['Black Wildebeest','Common Ostrich','Common Warthog','Nile Lechwe','Plains Zebra','Reticulated Giraffe','Sable Antelope','Southern White Rhinoceros','Springbok',"Thomson's Gazelle"],guestWalk:false,exhibit:false},
+  {id:'african_crested_porcupine',name:'African Crested Porcupine',latin:'Hystrix cristata',pack:'Africa',continents:['Africa','Europe'],biomes:['Desert','Grassland'],img:'hystrix_cristata',enrichedBy:[],guestWalk:true,exhibit:false},
+  {id:'african_penguin',name:'African Penguin',latin:'Spheniscus demersus',pack:'Standard',continents:['Africa'],biomes:['Aquatic','Temperate'],img:'spheniscus_demersus',enrichedBy:[],guestWalk:true,exhibit:false},
+  {id:'african_savannah_elephant',name:'African Savannah Elephant',latin:'Loxodonta africana',pack:'Standard',continents:['Africa'],biomes:['Grassland','Tropical'],img:'loxodonta_africana',enrichedBy:[],guestWalk:false,exhibit:false},
+  {id:'african_wild_dog',name:'African Wild Dog',latin:'Lycaon pictus',pack:'Africa',continents:['Africa'],biomes:['Desert','Grassland'],img:'lycaon_pictus',enrichedBy:[],guestWalk:false,exhibit:false},
+  {id:'aldabra_giant_tortoise',name:'Aldabra Giant Tortoise',latin:'Aldabrachelys gigantea',pack:'Conservation',continents:['Africa'],biomes:['Tropical'],img:'aldabrachelys_gigantea',enrichedBy:[],guestWalk:true,exhibit:false},
+  {id:'alpine_ibex',name:'Alpine Ibex',latin:'Capra ibex',pack:'Europe',continents:['Europe'],biomes:['Temperate','Taiga'],img:'capra_ibex',enrichedBy:[],guestWalk:false,exhibit:false},
+  {id:'american_alligator',name:'American Alligator',latin:'Alligator mississippiensis',pack:'Standard',continents:['North America'],biomes:['Aquatic','Temperate'],img:'alligator_mississippiensis',enrichedBy:[],guestWalk:false,exhibit:false},
+  {id:'american_bison',name:'American Bison',latin:'Bison bison bison',pack:'North America',continents:['North America'],biomes:['Grassland'],img:'bison_bison_bison',enrichedBy:['Black-Tailed Prairie Dog','Pronghorn Antelope'],guestWalk:false,exhibit:false},
+  {id:'amur_leopard',name:'Amur Leopard',latin:'Panthera pardus orientalis',pack:'Conservation',continents:['Asia'],biomes:['Taiga','Temperate'],img:'panthera_pardus_orientalis',enrichedBy:[],guestWalk:false,exhibit:false},
+  {id:'arctic_fox',name:'Arctic Fox',latin:'Vulpes lagopus',pack:'Arctic',continents:['North America','Europe','Asia'],biomes:['Tundra','Taiga'],img:'vulpes_lagopus',enrichedBy:[],guestWalk:false,exhibit:false},
+  {id:'arctic_wolf',name:'Arctic Wolf',latin:'Canis lupus arctos',pack:'Arctic',continents:['North America'],biomes:['Taiga','Tundra'],img:'canis_lupus_arctos',enrichedBy:[],guestWalk:false,exhibit:false},
+  {id:'asian_small_clawed_otter',name:'Asian Small-Clawed Otter',latin:'Aonyx cinereus',pack:'Southeast Asia',continents:['Asia'],biomes:['Aquatic','Tropical','Grassland'],img:'aonyx_cinereus',enrichedBy:['Binturong','Bornean Orangutan','Indian Rhinoceros','Malayan Tapir','Proboscis Monkey'],guestWalk:true,exhibit:false},
+  {id:'asian_water_monitor',name:'Asian Water Monitor',latin:'Varanus salvator',pack:'Southeast Asia',continents:['Asia'],biomes:['Tropical','Aquatic'],img:'varanus_salvator',enrichedBy:[],guestWalk:false,exhibit:false},
+  {id:'bactrian_camel',name:'Bactrian Camel',latin:'Camelus bactrianus',pack:'Eurasia',continents:['Asia'],biomes:['Desert','Temperate'],img:'camelus_bactrianus',enrichedBy:[],guestWalk:false,exhibit:false},
+  {id:'bairds_tapir',name:"Baird's Tapir",latin:'Tapirus bairdii',pack:'South America',continents:['South America'],biomes:['Tropical','Temperate','Grassland'],img:'tapirus_bairdii',enrichedBy:['Capybara','Colombian White-Faced Capuchin Monkey','Giant Anteater'],guestWalk:false,exhibit:false},
+  {id:'bengal_tiger',name:'Bengal Tiger',latin:'Panthera tigris tigris',pack:'Standard',continents:['Asia'],biomes:['Tropical','Temperate','Grassland'],img:'panthera_tigris_tigris',enrichedBy:[],guestWalk:false,exhibit:false},
+  {id:'binturong',name:'Binturong',latin:'Arctictis binturong',pack:'Southeast Asia',continents:['Asia'],biomes:['Tropical','Temperate'],img:'arctictis_binturong',enrichedBy:['Asian Small-Clawed Otter','Malayan Tapir','Sun Bear'],guestWalk:true,exhibit:false},
+  {id:'black_rhinoceros',name:'Black Rhinoceros',latin:'Diceros bicornis',pack:'Standard',continents:['Africa'],biomes:['Desert','Grassland'],img:'diceros_bicornis',enrichedBy:[],guestWalk:false,exhibit:false},
+  {id:'black_wildebeest',name:'Black Wildebeest',latin:'Connochaetes gnou',pack:'Africa',continents:['Africa'],biomes:['Grassland'],img:'connochaetes_gnou',enrichedBy:['African Buffalo','Common Ostrich','Common Warthog','Plains Zebra','Reticulated Giraffe','Sable Antelope','Southern White Rhinoceros','Springbok',"Thomson's Gazelle"],guestWalk:false,exhibit:false},
+  {id:'bw_ruffed_lemur',name:'Black-and-White Ruffed Lemur',latin:'Varecia variegata',pack:'Conservation',continents:['Africa'],biomes:['Tropical'],img:'varecia_variegata',enrichedBy:['Red Ruffed Lemur','Ring Tailed Lemur'],guestWalk:true,exhibit:false},
+  {id:'black_tailed_prairie_dog',name:'Black-Tailed Prairie Dog',latin:'Cynomys ludovicianus',pack:'North America',continents:['North America'],biomes:['Grassland'],img:'cynomys_ludovicianus',enrichedBy:['American Bison'],guestWalk:true,exhibit:false},
+  {id:'blue_wildebeest',name:'Blue Wildebeest',latin:'Connochaetes taurinus',pack:'Standard',continents:['Africa'],biomes:['Grassland'],img:'connochaetes_taurinus',enrichedBy:[],guestWalk:false,exhibit:false},
+  {id:'bongo',name:'Bongo',latin:'Tragelaphus eurycerus',pack:'Africa',continents:['Africa'],biomes:['Tropical'],img:'tragelaphus_eurycerus',enrichedBy:[],guestWalk:false,exhibit:false},
+  {id:'bonobo',name:'Bonobo',latin:'Pan paniscus',pack:'Conservation',continents:['Africa'],biomes:['Tropical'],img:'pan_paniscus',enrichedBy:[],guestWalk:false,exhibit:false},
+  {id:'bornean_orangutan',name:'Bornean Orangutan',latin:'Pongo pygmaeus',pack:'Southeast Asia',continents:['Asia'],biomes:['Tropical'],img:'pongo_pygmaeus',enrichedBy:['Asian Small-Clawed Otter','Malayan Tapir'],guestWalk:false,exhibit:false},
+  {id:'california_sea_lion',name:'California Sea Lion',latin:'Zalophus californianus',pack:'Aquatic',continents:['North America'],biomes:['Aquatic','Temperate'],img:'zalophus_californianus',enrichedBy:[],guestWalk:false,exhibit:false},
+  {id:'capybara',name:'Capybara',latin:'Hydrochoerus hydrochaeris',pack:'South America',continents:['South America'],biomes:['Aquatic','Grassland','Tropical'],img:'hydrochoerus_hydrochaeris',enrichedBy:["Baird's Tapir",'Colombian White-Faced Capuchin Monkey','Galapagos Giant Tortoise','Giant Anteater','Llama'],guestWalk:true,exhibit:false},
+  {id:'caracal',name:'Caracal',latin:'Caracal caracal',pack:'Arid',continents:['Africa','Asia'],biomes:['Desert','Grassland'],img:'caracal_caracal',enrichedBy:[],guestWalk:false,exhibit:false},
+  {id:'cheetah',name:'Cheetah',latin:'Acinonyx jubatus',pack:'Standard',continents:['Africa','Asia'],biomes:['Desert','Grassland'],img:'acinonyx_jubatus',enrichedBy:[],guestWalk:false,exhibit:false},
+  {id:'chinese_pangolin',name:'Chinese Pangolin',latin:'Manis pentadactyla',pack:'Southeast Asia',continents:['Asia'],biomes:['Tropical','Temperate'],img:'manis_pentadactyla',enrichedBy:[],guestWalk:true,exhibit:false},
+  {id:'clouded_leopard',name:'Clouded Leopard',latin:'Neofelis nebulosa',pack:'Southeast Asia',continents:['Asia'],biomes:['Tropical','Temperate'],img:'neofelis_nebulosa',enrichedBy:[],guestWalk:false,exhibit:false},
+  {id:'colombian_capuchin',name:'Colombian White-Faced Capuchin Monkey',latin:'Cebus capucinus',pack:'South America',continents:['South America','North America'],biomes:['Tropical','Temperate'],img:'cebus_capucinus',enrichedBy:["Baird's Tapir",'Capybara','Giant Anteater'],guestWalk:true,exhibit:false},
+  {id:'common_ostrich',name:'Common Ostrich',latin:'Struthio camelus',pack:'Standard',continents:['Africa'],biomes:['Grassland','Desert'],img:'struthio_camelus',enrichedBy:['African Buffalo','Black Wildebeest','Common Warthog','Nile Lechwe','Plains Zebra','Reticulated Giraffe','Sable Antelope','Southern White Rhinoceros','Springbok',"Thomson's Gazelle"],guestWalk:false,exhibit:false},
+  {id:'common_warthog',name:'Common Warthog',latin:'Phacochoerus africanus',pack:'Standard',continents:['Africa'],biomes:['Tropical','Grassland'],img:'phacochoerus_africanus',enrichedBy:['African Buffalo','Black Wildebeest','Common Ostrich','Plains Zebra','Reticulated Giraffe','Sable Antelope','Springbok',"Thomson's Gazelle"],guestWalk:false,exhibit:false},
+  {id:'common_wombat',name:'Common Wombat',latin:'Vombatus ursinus',pack:'Australia',continents:['Oceania'],biomes:['Temperate','Grassland'],img:'vombatus_ursinus',enrichedBy:[],guestWalk:false,exhibit:false},
+  {id:'cougar',name:'Cougar',latin:'Puma concolor',pack:'North America',continents:['North America','South America'],biomes:['Desert','Taiga','Tropical','Grassland','Temperate'],img:'puma_concolor',enrichedBy:[],guestWalk:false,exhibit:false},
+  {id:'cuviers_dwarf_caiman',name:"Cuvier's Dwarf Caiman",latin:'Paleosuchus palpebrosus',pack:'South America',continents:['South America'],biomes:['Aquatic','Temperate','Tropical','Grassland'],img:'paleosuchus_palpebrosus',enrichedBy:[],guestWalk:false,exhibit:false},
+  {id:'dall_sheep',name:'Dall Sheep',latin:'Ovis dalli',pack:'Arctic',continents:['North America'],biomes:['Taiga','Tundra'],img:'ovis_dalli',enrichedBy:[],guestWalk:false,exhibit:false},
+  {id:'dama_gazelle',name:'Dama Gazelle',latin:'Nanger dama',pack:'Arid',continents:['Africa'],biomes:['Desert','Grassland'],img:'nanger_dama',enrichedBy:[],guestWalk:true,exhibit:false},
+  {id:'dhole',name:'Dhole',latin:'Cuon alpinus alpinus',pack:'Southeast Asia',continents:['Asia'],biomes:['Tropical','Temperate','Taiga'],img:'cuon_alpinus_alpinus',enrichedBy:[],guestWalk:false,exhibit:false},
+  {id:'dingo',name:'Dingo',latin:'Canis lupus dingo',pack:'Australia',continents:['Oceania'],biomes:['Desert','Grassland'],img:'canis_lupus_dingo',enrichedBy:[],guestWalk:false,exhibit:false},
+  {id:'dromedary_camel',name:'Dromedary Camel',latin:'Camelus dromedarius',pack:'Arid',continents:['Africa','Asia'],biomes:['Desert','Grassland','Temperate'],img:'camelus_dromedarius',enrichedBy:[],guestWalk:false,exhibit:false},
+  {id:'emu',name:'Emu',latin:'Dromaius novaehollandiae',pack:'Australia',continents:['Oceania'],biomes:['Grassland'],img:'dromaius_novaehollandiae',enrichedBy:[],guestWalk:false,exhibit:false},
+  {id:'eurasian_lynx',name:'Eurasian Lynx',latin:'Lynx lynx',pack:'Eurasia',continents:['Europe','Asia'],biomes:['Taiga','Temperate','Tundra','Grassland'],img:'lynx_lynx',enrichedBy:[],guestWalk:false,exhibit:false},
+  {id:'european_badger',name:'European Badger',latin:'Meles meles',pack:'Europe',continents:['Europe','Asia'],biomes:['Taiga','Temperate','Grassland'],img:'meles_meles',enrichedBy:[],guestWalk:false,exhibit:false},
+  {id:'european_fallow_deer',name:'European Fallow Deer',latin:'Dama dama',pack:'Europe',continents:['Europe'],biomes:['Temperate','Grassland'],img:'dama_dama',enrichedBy:['Red Deer'],guestWalk:true,exhibit:false},
+  {id:'fennec_fox',name:'Fennec Fox',latin:'Vulpes zerda',pack:'Arid',continents:['Africa'],biomes:['Desert'],img:'vulpes_zerda',enrichedBy:[],guestWalk:true,exhibit:false},
+  {id:'formosan_black_bear',name:'Formosan Black Bear',latin:'Ursus thibetanus formosanus',pack:'Eurasia',continents:['Asia'],biomes:['Temperate','Taiga'],img:'ursus_thibetanus_formosanus',enrichedBy:[],guestWalk:false,exhibit:false},
+  {id:'fossa',name:'Fossa',latin:'Cryptoprocta ferox',pack:'Conservation',continents:['Africa'],biomes:['Tropical'],img:'cryptoprocta_ferox',enrichedBy:[],guestWalk:false,exhibit:false},
+  {id:'galapagos_tortoise',name:'Galapagos Giant Tortoise',latin:'Chelonoidis nigra',pack:'South America',continents:['South America'],biomes:['Tropical'],img:'chelonoidis_nigra',enrichedBy:['Capybara'],guestWalk:true,exhibit:false},
+  {id:'gemsbok',name:'Gemsbok',latin:'Oryx gazella',pack:'Arid',continents:['Africa'],biomes:['Desert','Grassland'],img:'oryx_gazella',enrichedBy:[],guestWalk:false,exhibit:false},
+  {id:'gharial',name:'Gharial',latin:'Gavialis gangeticus',pack:'Wetlands',continents:['Asia'],biomes:['Aquatic','Tropical','Temperate'],img:'gavialis_gangeticus',enrichedBy:[],guestWalk:false,exhibit:false},
+  {id:'giant_anteater',name:'Giant Anteater',latin:'Myrmecophaga tridactyla',pack:'South America',continents:['South America','North America'],biomes:['Tropical','Grassland'],img:'myrmecophaga_tridactyla',enrichedBy:["Baird's Tapir",'Capybara','Colombian White-Faced Capuchin Monkey'],guestWalk:true,exhibit:false},
+  {id:'giant_otter',name:'Giant Otter',latin:'Pteronura brasiliensis',pack:'South America',continents:['South America'],biomes:['Aquatic','Tropical'],img:'pteronura_brasiliensis',enrichedBy:[],guestWalk:false,exhibit:false},
+  {id:'giant_panda',name:'Giant Panda',latin:'Ailuropoda melanoleuca',pack:'Standard',continents:['Asia'],biomes:['Taiga','Temperate'],img:'ailuropoda_melanoleuca',enrichedBy:[],guestWalk:false,exhibit:false},
+  {id:'gray_seal',name:'Gray Seal',latin:'Halichoerus grypus atlantica',pack:'Aquatic',continents:['Europe','North America'],biomes:['Aquatic','Tundra','Temperate'],img:'halichoerus_grypus_atlantica',enrichedBy:[],guestWalk:false,exhibit:false},
+  {id:'greater_flamingo',name:'Greater Flamingo',latin:'Phoenicopterus roseus',pack:'Wetlands',continents:['Africa','Asia','Europe'],biomes:['Aquatic','Tropical','Temperate','Grassland'],img:'phoenicopterus_roseus',enrichedBy:[],guestWalk:true,exhibit:false},
+  {id:'grizzly_bear',name:'Grizzly Bear',latin:'Ursus arctos horribilis',pack:'North America',continents:['North America'],biomes:['Taiga','Temperate'],img:'ursus_arctos_horribilis',enrichedBy:[],guestWalk:false,exhibit:false},
+  {id:'himalayan_brown_bear',name:'Himalayan Brown Bear',latin:'Ursus arctos isabellinus',pack:'Eurasia',continents:['Asia'],biomes:['Taiga','Tundra'],img:'ursus_arctos_isabellinus',enrichedBy:[],guestWalk:false,exhibit:false},
+  {id:'hippopotamus',name:'Hippopotamus',latin:'Hippopotamus amphibius',pack:'Standard',continents:['Africa'],biomes:['Aquatic','Grassland'],img:'hippopotamus_amphibius',enrichedBy:[],guestWalk:false,exhibit:false},
+  {id:'indian_elephant',name:'Indian Elephant',latin:'Elephas maximus indicus',pack:'Standard',continents:['Asia'],biomes:['Tropical','Grassland','Temperate'],img:'elephas_maximus_indicus',enrichedBy:['Malayan Tapir','Proboscis Monkey'],guestWalk:false,exhibit:false},
+  {id:'indian_peafowl',name:'Indian Peafowl',latin:'Pavo cristatus',pack:'Southeast Asia',continents:['Asia'],biomes:['Temperate','Tropical','Grassland'],img:'pavo_cristatus',enrichedBy:[],guestWalk:true,exhibit:false},
+  {id:'indian_rhinoceros',name:'Indian Rhinoceros',latin:'Rhinoceros unicornis',pack:'Conservation',continents:['Asia'],biomes:['Tropical','Grassland','Aquatic'],img:'rhinoceros_unicornis',enrichedBy:['Asian Small-Clawed Otter','Wild Water Buffalo'],guestWalk:false,exhibit:false},
+  {id:'jaguar',name:'Jaguar',latin:'Panthera onca',pack:'South America',continents:['South America','North America'],biomes:['Tropical','Grassland','Temperate'],img:'panthera_onca',enrichedBy:[],guestWalk:false,exhibit:false},
+  {id:'japanese_macaque',name:'Japanese Macaque',latin:'Macaca fuscata',pack:'Eurasia',continents:['Asia'],biomes:['Taiga','Temperate'],img:'macaca_fuscata',enrichedBy:['Red-Crowned Crane'],guestWalk:true,exhibit:false},
+  {id:'king_penguin',name:'King Penguin',latin:'Aptenodytes patagonicus patagonicus',pack:'Arctic',continents:['South America'],biomes:['Aquatic','Tundra'],img:'aptenodytes_patagonicus_patagonicus',enrichedBy:[],guestWalk:true,exhibit:false},
+  {id:'koala',name:'Koala',latin:'Phascolarctos cinereus',pack:'Australia',continents:['Oceania'],biomes:['Temperate','Tropical'],img:'phascolarctos_cinereus',enrichedBy:['Red Kangaroo'],guestWalk:true,exhibit:false},
+  {id:'komodo_dragon',name:'Komodo Dragon',latin:'Varanus komodoensis',pack:'Southeast Asia',continents:['Asia','Oceania'],biomes:['Tropical','Desert','Grassland'],img:'varanus_komodoensis',enrichedBy:[],guestWalk:false,exhibit:false},
+  {id:'lar_gibbon',name:'Lar Gibbon',latin:'Hylobates lar',pack:'Southeast Asia',continents:['Asia'],biomes:['Tropical'],img:'hylobates_lar',enrichedBy:[],guestWalk:false,exhibit:false},
+  {id:'little_penguin',name:'Little Penguin',latin:'Eudyptula minor',pack:'Australia',continents:['Oceania'],biomes:['Aquatic','Temperate','Grassland'],img:'eudyptula_minor',enrichedBy:[],guestWalk:true,exhibit:false},
+  {id:'llama',name:'Llama',latin:'Lama glama',pack:'South America',continents:['South America'],biomes:['Grassland','Temperate'],img:'lama_glama',enrichedBy:['Capybara'],guestWalk:true,exhibit:false},
+  {id:'malayan_tapir',name:'Malayan Tapir',latin:'Tapirus indicus',pack:'Southeast Asia',continents:['Asia'],biomes:['Tropical','Temperate'],img:'tapirus_indicus',enrichedBy:['Asian Small-Clawed Otter','Binturong','Bornean Orangutan','Indian Elephant','Proboscis Monkey','Wild Water Buffalo'],guestWalk:false,exhibit:false},
+  {id:'mandrill',name:'Mandrill',latin:'Mandrillus sphinx',pack:'Africa',continents:['Africa'],biomes:['Tropical'],img:'mandrillus_sphinx',enrichedBy:[],guestWalk:false,exhibit:false},
+  {id:'maned_wolf',name:'Maned Wolf',latin:'Chrysocyon brachyurus',pack:'South America',continents:['South America'],biomes:['Grassland'],img:'chrysocyon_brachyurus',enrichedBy:[],guestWalk:false,exhibit:false},
+  {id:'meerkat',name:'Meerkat',latin:'Suricata suricatta',pack:'Standard',continents:['Africa'],biomes:['Grassland','Desert'],img:'suricata_suricatta',enrichedBy:['Aardvark'],guestWalk:true,exhibit:false},
+  {id:'moose',name:'Moose',latin:'Alces alces',pack:'Eurasia',continents:['North America','Europe','Asia'],biomes:['Taiga','Temperate'],img:'alces_alces',enrichedBy:[],guestWalk:false,exhibit:false},
+  {id:'nile_lechwe',name:'Nile Lechwe',latin:'Kobus megaceros',pack:'Wetlands',continents:['Africa'],biomes:['Aquatic','Grassland'],img:'kobus_megaceros',enrichedBy:['African Buffalo','Common Ostrich','Reticulated Giraffe'],guestWalk:true,exhibit:false},
+  {id:'nile_monitor',name:'Nile Monitor',latin:'Varanus niloticus',pack:'Africa',continents:['Africa'],biomes:['Aquatic','Grassland','Desert'],img:'varanus_niloticus',enrichedBy:[],guestWalk:false,exhibit:false},
+  {id:'nine_banded_armadillo',name:'Nine-Banded Armadillo',latin:'Dasypus novemcinctus',pack:'North America',continents:['North America','South America'],biomes:['Grassland'],img:'dasypus_novemcinctus',enrichedBy:[],guestWalk:true,exhibit:false},
+  {id:'north_american_beaver',name:'North American Beaver',latin:'Castor canadensis',pack:'Wetlands',continents:['North America'],biomes:['Aquatic','Taiga','Temperate'],img:'castor_canadensis',enrichedBy:[],guestWalk:true,exhibit:false},
+  {id:'north_island_kiwi',name:'North Island Brown Kiwi',latin:'Apteryx mantelli',pack:'Oceania',continents:['Oceania'],biomes:['Temperate','Tropical'],img:'apteryx_mantelli',enrichedBy:[],guestWalk:true,exhibit:false},
+  {id:'north_sulawesi_babirusa',name:'North Sulawesi Babirusa',latin:'Babyrousa celebensis',pack:'Southeast Asia',continents:['Asia'],biomes:['Tropical'],img:'babyrousa_celebensis',enrichedBy:[],guestWalk:false,exhibit:false},
+  {id:'nyala',name:'Nyala',latin:'Tragelaphus angasii',pack:'Africa',continents:['Africa'],biomes:['Tropical','Grassland'],img:'tragelaphus_angasii',enrichedBy:['Southern White Rhinoceros'],guestWalk:false,exhibit:false},
+  {id:'okapi',name:'Okapi',latin:'Okapia johnstoni',pack:'Africa',continents:['Africa'],biomes:['Tropical'],img:'okapia_johnstoni',enrichedBy:[],guestWalk:true,exhibit:false},
+  {id:'plains_zebra',name:'Plains Zebra',latin:'Equus quagga',pack:'Standard',continents:['Africa'],biomes:['Grassland','Desert'],img:'equus_quagga',enrichedBy:['African Buffalo','Black Wildebeest','Common Ostrich','Common Warthog','Reticulated Giraffe','Sable Antelope','Southern White Rhinoceros','Springbok',"Thomson's Gazelle"],guestWalk:false,exhibit:false},
+  {id:'platypus',name:'Platypus',latin:'Ornithorhynchus anatinus',pack:'Australia',continents:['Oceania'],biomes:['Aquatic','Tropical','Grassland','Temperate'],img:'ornithorhynchus_anatinus',enrichedBy:[],guestWalk:true,exhibit:false},
+  {id:'polar_bear',name:'Polar Bear',latin:'Ursus maritimus',pack:'Arctic',continents:['North America','Europe','Asia'],biomes:['Tundra','Aquatic'],img:'ursus_maritimus',enrichedBy:[],guestWalk:false,exhibit:false},
+  {id:'proboscis_monkey',name:'Proboscis Monkey',latin:'Nasalis larvatus larvatus',pack:'Southeast Asia',continents:['Asia'],biomes:['Aquatic','Tropical'],img:'nasalis_larvatus_larvatus',enrichedBy:['Asian Small-Clawed Otter','Indian Elephant','Malayan Tapir'],guestWalk:false,exhibit:false},
+  {id:'pronghorn_antelope',name:'Pronghorn Antelope',latin:'Antilocapra americana',pack:'North America',continents:['North America'],biomes:['Grassland','Temperate'],img:'antilocapra_americana',enrichedBy:['American Bison'],guestWalk:true,exhibit:false},
+  {id:'przewalskis_horse',name:"Przewalski's Horse",latin:'Equus ferus przewalskii',pack:'Eurasia',continents:['Asia','Europe'],biomes:['Grassland','Temperate','Desert'],img:'equus_ferus_przewalskii',enrichedBy:[],guestWalk:false,exhibit:false},
+  {id:'pygmy_hippo',name:'Pygmy Hippo',latin:'Hexaprotodon liberiensis',pack:'Africa',continents:['Africa'],biomes:['Aquatic','Tropical'],img:'hexaprotodon_liberiensis',enrichedBy:[],guestWalk:false,exhibit:false},
+  {id:'quokka',name:'Quokka',latin:'Setonix brachyurus',pack:'Australia',continents:['Oceania'],biomes:['Grassland'],img:'setonix_brachyurus',enrichedBy:[],guestWalk:true,exhibit:false},
+  {id:'raccoon',name:'Raccoon',latin:'Procyon lotor',pack:'North America',continents:['North America'],biomes:['Temperate','Taiga','Grassland'],img:'procyon_lotor',enrichedBy:[],guestWalk:true,exhibit:false},
+  {id:'red_deer',name:'Red Deer',latin:'Cervus elaphus',pack:'Europe',continents:['Europe','Asia'],biomes:['Temperate','Grassland','Taiga'],img:'cervus_elaphus',enrichedBy:['European Fallow Deer'],guestWalk:true,exhibit:false},
+  {id:'red_fox',name:'Red Fox',latin:'Vulpes vulpes',pack:'Europe',continents:['Europe','Asia','North America'],biomes:['Temperate','Taiga','Grassland'],img:'vulpes_vulpes',enrichedBy:[],guestWalk:false,exhibit:false},
+  {id:'red_kangaroo',name:'Red Kangaroo',latin:'Macropus rufus',pack:'Australia',continents:['Oceania'],biomes:['Desert','Grassland'],img:'macropus_rufus',enrichedBy:['Koala'],guestWalk:false,exhibit:false},
+  {id:'red_panda',name:'Red Panda',latin:'Ailurus fulgens',pack:'Standard',continents:['Asia'],biomes:['Taiga','Temperate'],img:'ailurus_fulgens',enrichedBy:[],guestWalk:false,exhibit:false},
+  {id:'red_river_hog',name:'Red River Hog',latin:'Potamochoerus porcus',pack:'Africa',continents:['Africa'],biomes:['Tropical','Grassland','Aquatic'],img:'potamochoerus_porcus',enrichedBy:[],guestWalk:false,exhibit:false},
+  {id:'red_ruffed_lemur',name:'Red Ruffed Lemur',latin:'Varecia rubra',pack:'Conservation',continents:['Africa'],biomes:['Tropical'],img:'varecia_rubra',enrichedBy:['Black-and-White Ruffed Lemur','Ring Tailed Lemur'],guestWalk:true,exhibit:false},
+  {id:'red_crowned_crane',name:'Red-Crowned Crane',latin:'Grus japonensis',pack:'Eurasia',continents:['Asia'],biomes:['Aquatic','Grassland','Temperate'],img:'grus_japonensis',enrichedBy:['Japanese Macaque'],guestWalk:true,exhibit:false},
+  {id:'red_necked_wallaby',name:'Red-Necked Wallaby',latin:'Notamacropus rufogriseus',pack:'Australia',continents:['Oceania'],biomes:['Temperate','Grassland'],img:'notamacropus_rufogriseus',enrichedBy:[],guestWalk:true,exhibit:false},
+  {id:'reindeer',name:'Reindeer',latin:'Rangifer tarandus',pack:'Arctic',continents:['North America','Europe','Asia'],biomes:['Tundra','Taiga'],img:'rangifer_tarandus',enrichedBy:[],guestWalk:false,exhibit:false},
+  {id:'reticulated_giraffe',name:'Reticulated Giraffe',latin:'Giraffa camelopardalis reticulata',pack:'Standard',continents:['Africa'],biomes:['Tropical','Grassland'],img:'giraffa_camelopardalis_reticulata',enrichedBy:['African Buffalo','Black Wildebeest','Common Ostrich','Common Warthog','Nile Lechwe','Plains Zebra','Sable Antelope','Southern White Rhinoceros','Springbok',"Thomson's Gazelle"],guestWalk:false,exhibit:false},
+  {id:'ring_tailed_lemur',name:'Ring Tailed Lemur',latin:'Lemur catta',pack:'Standard',continents:['Africa'],biomes:['Tropical'],img:'lemur_catta',enrichedBy:['Black-and-White Ruffed Lemur','Red Ruffed Lemur'],guestWalk:true,exhibit:false},
+  {id:'sable_antelope',name:'Sable Antelope',latin:'Hippotragus niger',pack:'Africa',continents:['Africa'],biomes:['Grassland','Tropical'],img:'hippotragus_niger',enrichedBy:['African Buffalo','Black Wildebeest','Common Ostrich','Common Warthog','Plains Zebra','Reticulated Giraffe','Southern White Rhinoceros','Springbok',"Thomson's Gazelle"],guestWalk:false,exhibit:false},
+  {id:'saltwater_crocodile',name:'Saltwater Crocodile',latin:'Crocodylus porosus',pack:'Southeast Asia',continents:['Asia','Oceania'],biomes:['Aquatic','Tropical'],img:'crocodylus_porosus',enrichedBy:[],guestWalk:false,exhibit:false},
+  {id:'sand_cat',name:'Sand Cat',latin:'Felis margarita',pack:'Arid',continents:['Africa','Asia'],biomes:['Desert'],img:'felis_margarita',enrichedBy:[],guestWalk:false,exhibit:false},
+  {id:'scimitar_horned_oryx',name:'Scimitar-Horned Oryx',latin:'Oryx dammah',pack:'Arid',continents:['Africa'],biomes:['Desert','Grassland'],img:'oryx_dammah',enrichedBy:[],guestWalk:false,exhibit:false},
+  {id:'siamang',name:'Siamang',latin:'Symphalangus syndactylus',pack:'Southeast Asia',continents:['Asia'],biomes:['Tropical'],img:'symphalangus_syndactylus',enrichedBy:[],guestWalk:false,exhibit:false},
+  {id:'siberian_tiger',name:'Siberian Tiger',latin:'Panthera tigris altaica',pack:'Standard',continents:['Asia'],biomes:['Taiga','Temperate'],img:'panthera_tigris_altaica',enrichedBy:[],guestWalk:false,exhibit:false},
+  {id:'snow_leopard',name:'Snow Leopard',latin:'Panthera uncia',pack:'Standard',continents:['Asia'],biomes:['Taiga'],img:'panthera_uncia',enrichedBy:[],guestWalk:false,exhibit:false},
+  {id:'somali_wild_ass',name:'Somali Wild Ass',latin:'Equus africanus somaliensis',pack:'Arid',continents:['Africa'],biomes:['Desert'],img:'equus_africanus_somaliensis',enrichedBy:[],guestWalk:false,exhibit:false},
+  {id:'southern_cassowary',name:'Southern Cassowary',latin:'Casuarius casuarius',pack:'Australia',continents:['Oceania','Asia'],biomes:['Tropical'],img:'casuarius_casuarius',enrichedBy:[],guestWalk:false,exhibit:false},
+  {id:'southern_white_rhino',name:'Southern White Rhinoceros',latin:'Ceratotherium simum simum',pack:'Standard',continents:['Africa'],biomes:['Grassland'],img:'ceratotherium_simum_simum',enrichedBy:['African Buffalo','Black Wildebeest','Common Ostrich','Nyala','Plains Zebra','Reticulated Giraffe','Sable Antelope','Springbok',"Thomson's Gazelle"],guestWalk:false,exhibit:false},
+  {id:'spectacled_caiman',name:'Spectacled Caiman',latin:'Caiman crocodilus',pack:'South America',continents:['South America'],biomes:['Aquatic','Tropical','Grassland'],img:'caiman_crocodilus',enrichedBy:[],guestWalk:false,exhibit:false},
+  {id:'spotted_hyena',name:'Spotted Hyena',latin:'Crocuta crocuta',pack:'Standard',continents:['Africa'],biomes:['Grassland'],img:'crocuta_crocuta',enrichedBy:[],guestWalk:false,exhibit:false},
+  {id:'springbok',name:'Springbok',latin:'Antidorcas marsupialis',pack:'Africa',continents:['Africa'],biomes:['Grassland','Desert'],img:'antidorcas_marsupialis',enrichedBy:['African Buffalo','Black Wildebeest','Common Ostrich','Common Warthog','Plains Zebra','Reticulated Giraffe','Sable Antelope','Southern White Rhinoceros',"Thomson's Gazelle"],guestWalk:true,exhibit:false},
+  {id:'striped_hyena',name:'Striped Hyena',latin:'Hyaena hyaena',pack:'Arid',continents:['Africa','Asia'],biomes:['Desert','Grassland'],img:'hyaena_hyaena',enrichedBy:[],guestWalk:false,exhibit:false},
+  {id:'striped_skunk',name:'Striped Skunk',latin:'Mephitis mephitis',pack:'North America',continents:['North America'],biomes:['Temperate','Grassland','Taiga'],img:'mephitis_mephitis',enrichedBy:[],guestWalk:false,exhibit:false},
+  {id:'sun_bear',name:'Sun Bear',latin:'Helarctos malayanus',pack:'Southeast Asia',continents:['Asia'],biomes:['Tropical','Temperate','Grassland'],img:'helarctos_malayanus',enrichedBy:['Binturong'],guestWalk:false,exhibit:false},
+  {id:'tasmanian_devil',name:'Tasmanian Devil',latin:'Sarcophilus harrisii',pack:'Australia',continents:['Oceania'],biomes:['Temperate'],img:'sarcophilus_harrisii',enrichedBy:[],guestWalk:false,exhibit:false},
+  {id:'thomsons_gazelle',name:"Thomson's Gazelle",latin:'Eudorcas thomsonii',pack:'Standard',continents:['Africa'],biomes:['Grassland'],img:'eudorcas_thomsonii',enrichedBy:['African Buffalo','Black Wildebeest','Common Ostrich','Common Warthog','Plains Zebra','Reticulated Giraffe','Sable Antelope','Southern White Rhinoceros','Springbok'],guestWalk:true,exhibit:false},
+  {id:'timber_wolf',name:'Timber Wolf',latin:'Canis lupus',pack:'North America',continents:['North America','Europe','Asia'],biomes:['Taiga','Tundra','Temperate'],img:'canis_lupus',enrichedBy:[],guestWalk:false,exhibit:false},
+  {id:'west_african_lion',name:'West African Lion',latin:'Panthera leo leo',pack:'Standard',continents:['Africa'],biomes:['Grassland','Desert'],img:'panthera_leo_leo',enrichedBy:[],guestWalk:false,exhibit:false},
+  {id:'western_chimpanzee',name:'Western Chimpanzee',latin:'Pan troglodytes verus',pack:'Standard',continents:['Africa'],biomes:['Tropical'],img:'pan_troglodytes_verus',enrichedBy:[],guestWalk:false,exhibit:false},
+  {id:'western_lowland_gorilla',name:'Western Lowland Gorilla',latin:'Gorilla gorilla gorilla',pack:'Standard',continents:['Africa'],biomes:['Tropical'],img:'gorilla_gorilla_gorilla',enrichedBy:[],guestWalk:false,exhibit:false},
+  {id:'wild_water_buffalo',name:'Wild Water Buffalo',latin:'Bubalus arnee',pack:'Southeast Asia',continents:['Asia'],biomes:['Aquatic','Tropical','Grassland'],img:'bubalus_arnee',enrichedBy:['Indian Rhinoceros','Malayan Tapir'],guestWalk:false,exhibit:false},
+  // Exhibit animals
+  {id:'amazon_centipede',name:'Amazonian Giant Centipede',latin:'Scolopendra gigantea',pack:'Standard',continents:['South America'],biomes:['Tropical'],img:'',enrichedBy:[],guestWalk:false,exhibit:true},
+  {id:'american_bullfrog',name:'American Bullfrog',latin:'Lithobates catesbeianus',pack:'Standard',continents:['North America'],biomes:['Aquatic'],img:'',enrichedBy:[],guestWalk:false,exhibit:true},
+  {id:'axolotl',name:'Axolotl',latin:'Ambystoma mexicanum',pack:'Standard',continents:['North America'],biomes:['Aquatic'],img:'',enrichedBy:[],guestWalk:false,exhibit:true},
+  {id:'boa_constrictor',name:'Boa Constrictor',latin:'Boa constrictor',pack:'Standard',continents:['South America'],biomes:['Tropical'],img:'',enrichedBy:[],guestWalk:false,exhibit:true},
+  {id:'red_eyed_tree_frog',name:'Red-Eyed Tree Frog',latin:'Agalychnis callidryas',pack:'Standard',continents:['South America'],biomes:['Tropical'],img:'',enrichedBy:[],guestWalk:false,exhibit:true},
+  {id:'green_iguana',name:'Green Iguana',latin:'Iguana iguana',pack:'South America',continents:['South America'],biomes:['Tropical'],img:'',enrichedBy:[],guestWalk:false,exhibit:true},
+];
+
+// ===== STATE =====
+let selectedIds = new Set();
+let activePacks = new Set();
+let activeBiomes = new Set();
+let activeContinents = new Set();
+let options = {
+  allowIncompatContinent: false,
+  allowIncompatBiome: false,
+  allowIncompatTemp: false,
+  allowIncompatTerrain: false,
+  allowIncompatCoverage: false,
+  includeExhibit: false,
+};
+let searchQuery = '';
+
+// ===== HELPERS =====
+function getAnimalById(id) { return ANIMALS.find(a => a.id === id); }
+function getAnimalByName(name) { return ANIMALS.find(a => a.name === name); }
+
+function getImgUrl(animal) {
+  if (!animal.img) return 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 36 36"><rect fill="%231c2330" width="36" height="36"/><text x="18" y="24" font-size="18" text-anchor="middle">🐾</text></svg>';
+  return `https://ewvgenstorage.blob.core.windows.net/planetzoosite/${animal.img}.png`;
+}
+
+function getSelectedAnimals() {
+  return [...selectedIds].map(id => getAnimalById(id)).filter(Boolean);
+}
+
+function getCombinedContinents() {
+  const sel = getSelectedAnimals();
+  if (!sel.length) return new Set(CONTINENTS);
+  let common = new Set(sel[0].continents);
+  for (const a of sel.slice(1)) {
+    for (const c of common) {
+      if (!a.continents.includes(c)) common.delete(c);
+    }
+  }
+  // union if allowing incompatible
+  if (options.allowIncompatContinent) {
+    const union = new Set();
+    sel.forEach(a => a.continents.forEach(c => union.add(c)));
+    return union;
+  }
+  return common;
+}
+
+function getCombinedBiomes() {
+  const sel = getSelectedAnimals();
+  if (!sel.length) return new Set(BIOMES);
+  if (options.allowIncompatBiome) {
+    const union = new Set();
+    sel.forEach(a => a.biomes.forEach(b => union.add(b)));
+    return union;
+  }
+  let common = new Set(sel[0].biomes);
+  for (const a of sel.slice(1)) {
+    for (const b of [...common]) {
+      if (!a.biomes.includes(b)) common.delete(b);
+    }
+  }
+  return common;
+}
+
+function isCompatibleWith(animal) {
+  const sel = getSelectedAnimals();
+  if (!sel.length) return true;
+  if (!options.allowIncompatContinent) {
+    const commonC = getCombinedContinents();
+    const overlap = animal.continents.some(c => commonC.has(c));
+    if (!overlap) return false;
+  }
+  if (!options.allowIncompatBiome) {
+    const commonB = getCombinedBiomes();
+    const overlap = animal.biomes.some(b => commonB.has(b));
+    if (!overlap) return false;
+  }
+  return true;
+}
+
+function passesFilters(animal) {
+  if (animal.exhibit && !options.includeExhibit) return false;
+  if (activePacks.size && !activePacks.has(animal.pack)) return false;
+  if (activeContinents.size && !animal.continents.some(c => activeContinents.has(c))) return false;
+  if (activeBiomes.size && !animal.biomes.some(b => activeBiomes.has(b))) return false;
+  if (searchQuery) {
+    const q = searchQuery.toLowerCase();
+    if (!animal.name.toLowerCase().includes(q) && !animal.latin.toLowerCase().includes(q)) return false;
+  }
+  return true;
+}
+
+// ===== RENDER =====
+function renderFilters() {
+  // Options
+  const optRow = document.getElementById('options-row');
+  const optDefs = [
+    ['allowIncompatContinent','Allow Incompatible Continent'],
+    ['allowIncompatBiome','Allow Incompatible Biome'],
+    ['allowIncompatTemp','Allow Incompatible Temperature'],
+    ['allowIncompatTerrain','Allow Incompatible Terrain'],
+    ['allowIncompatCoverage','Allow Incompatible Coverage'],
+    ['includeExhibit','Include Exhibit Animals'],
+  ];
+  optRow.innerHTML = optDefs.map(([k,label]) => `
+    <label class="toggle-row">
+      <input type="checkbox" data-opt="${k}" ${options[k]?'checked':''}>
+      <span>${label}</span>
+    </label>
+  `).join('');
+  optRow.querySelectorAll('input[type=checkbox]').forEach(cb => {
+    cb.addEventListener('change', () => {
+      options[cb.dataset.opt] = cb.checked;
+      renderAll();
+    });
+  });
+
+  // Packs
+  document.getElementById('pack-filters').innerHTML = PACKS.map(p => `
+    <span class="tag ${activePacks.has(p)?'active':''}" data-pack="${p}">${p}</span>
+  `).join('');
+  document.querySelectorAll('[data-pack]').forEach(el => {
+    el.addEventListener('click', () => {
+      const p = el.dataset.pack;
+      activePacks.has(p) ? activePacks.delete(p) : activePacks.add(p);
+      renderAll();
+    });
+  });
+
+  // Biomes
+  document.getElementById('biome-filters').innerHTML = BIOMES.map(b => `
+    <span class="tag ${activeBiomes.has(b)?'active':''}" data-biome="${b}">
+      <span class="biome-dot bd-${b.toLowerCase()}"></span>${b}
+    </span>
+  `).join('');
+  document.querySelectorAll('[data-biome]').forEach(el => {
+    el.addEventListener('click', () => {
+      const b = el.dataset.biome;
+      activeBiomes.has(b) ? activeBiomes.delete(b) : activeBiomes.add(b);
+      renderAll();
+    });
+  });
+
+  // Continents
+  document.getElementById('continent-filters').innerHTML = CONTINENTS.map(c => {
+    const cls = CONTINENT_COLORS[c] || '';
+    const key = c.toLowerCase().replace(' ','');
+    return `<span class="tag continent-tag ${activeContinents.has(c)?'active':''}" data-continent="${c}">
+      <span class="continent-icon ${cls}"></span>${c}
+    </span>`;
+  }).join('');
+  document.querySelectorAll('[data-continent]').forEach(el => {
+    el.addEventListener('click', () => {
+      const c = el.dataset.continent;
+      activeContinents.has(c) ? activeContinents.delete(c) : activeContinents.add(c);
+      renderAll();
+    });
+  });
+}
+
+function renderAnimalList() {
+  const container = document.getElementById('animal-list');
+  const visible = ANIMALS.filter(a => passesFilters(a));
+  
+  if (!visible.length) {
+    container.innerHTML = `<div style="color:var(--text-dim);font-style:italic;padding:20px;text-align:center;font-size:0.85rem">No animals match your filters.</div>`;
+    return;
+  }
+
+  container.innerHTML = visible.map(animal => {
+    const isSelected = selectedIds.has(animal.id);
+    const compat = isCompatibleWith(animal);
+    const incompatCls = (!isSelected && !compat) ? 'incompatible-item' : '';
+    const exhibitCls = animal.exhibit ? 'exhibit' : '';
+    return `
+      <div class="animal-item ${isSelected?'selected':''} ${incompatCls} ${exhibitCls}" data-id="${animal.id}" title="${animal.exhibit?'Exhibit animal':''}">
+        <img class="animal-img-thumb" src="${getImgUrl(animal)}" alt="${animal.name}" loading="lazy" onerror="this.src='data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 36 36%22><rect fill=%22%231c2330%22 width=%2236%22 height=%2236%22/><text x=%2218%22 y=%2224%22 font-size=%2218%22 text-anchor=%22middle%22>🐾</text></svg>'">
+        <div class="animal-name-block">
+          <div class="animal-common">${animal.name}</div>
+          <div class="animal-latin">${animal.latin}</div>
+        </div>
+        <div class="animal-icons">
+          ${animal.enrichedBy.length ? '<span class="icon-heart" title="Has enrichment group">♥</span>' : ''}
+          ${animal.guestWalk ? '<span class="icon-shoe" title="Guests can walk through">👣</span>' : ''}
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  container.querySelectorAll('.animal-item').forEach(el => {
+    el.addEventListener('click', () => {
+      const id = el.dataset.id;
+      const animal = getAnimalById(id);
+      if (!animal) return;
+      if (selectedIds.has(id)) {
+        selectedIds.delete(id);
+      } else {
+        if (!isCompatibleWith(animal) && !options.allowIncompatContinent && !options.allowIncompatBiome) return;
+        selectedIds.add(id);
+      }
+      renderAll();
+    });
+  });
+}
+
+function renderRightPanel() {
+  const panel = document.getElementById('right-panel');
+  const sel = getSelectedAnimals();
+
+  if (!sel.length) {
+    panel.innerHTML = `
+      <div class="panel-title">Habitat Requirements</div>
+      <div class="empty-state">
+        Click on animals in the list to add them to your habitat.<br>
+        The planner will show combined requirements and compatibility.
+      </div>
+    `;
+    return;
+  }
+
+  const combinedContinents = getCombinedContinents();
+  const combinedBiomes = getCombinedBiomes();
+
+  // Find enrichment groups active in selection
+  const enrichmentGroups = findEnrichmentGroups(sel);
+
+  // Compatibility warnings
+  let warnings = [];
+  if (sel.length > 1) {
+    // Check continent overlaps
+    const noContOverlap = sel.filter(a => ![...combinedContinents].some(c => a.continents.includes(c)));
+    if (noContOverlap.length) warnings.push(`Continent mismatch: ${noContOverlap.map(a=>a.name).join(', ')}`);
+    const noBiomeOverlap = sel.filter(a => ![...combinedBiomes].some(b => a.biomes.includes(b)));
+    if (noBiomeOverlap.length) warnings.push(`Biome mismatch: ${noBiomeOverlap.map(a=>a.name).join(', ')}`);
+  }
+
+  const guestWalkAll = sel.every(a => a.guestWalk);
+  const guestWalkSome = sel.some(a => a.guestWalk);
+
+  panel.innerHTML = `
+    <div class="panel-title">Habitat Requirements <span style="font-size:0.8rem;font-weight:400;color:var(--text-dim)">(${sel.length} animal${sel.length!==1?'s':''})</span></div>
+
+    ${warnings.map(w => `<div class="compat-warning">⚠ ${w}</div>`).join('')}
+
+    <div class="req-grid">
+      <div class="req-card">
+        <div class="req-card-title">Compatible Continents</div>
+        <div class="req-badges">
+          ${[...combinedContinents].map(c => `<span class="req-badge required">
+            <span class="continent-icon ${CONTINENT_COLORS[c]||''}" style="width:10px;height:10px;border-radius:50%;display:inline-block;flex-shrink:0"></span>
+            ${c}
+          </span>`).join('') || '<span style="color:var(--text-dim);font-size:0.75rem;font-style:italic">None in common</span>'}
+        </div>
+      </div>
+      <div class="req-card">
+        <div class="req-card-title">Compatible Biomes</div>
+        <div class="req-badges">
+          ${[...combinedBiomes].map(b => `<span class="req-badge compatible">
+            <span class="biome-dot bd-${b.toLowerCase()}" style="width:8px;height:8px;border-radius:50%;display:inline-block;flex-shrink:0"></span>
+            ${b}
+          </span>`).join('') || '<span style="color:var(--text-dim);font-size:0.75rem;font-style:italic">None in common</span>'}
+        </div>
+      </div>
+      <div class="req-card">
+        <div class="req-card-title">Guest Walkthrough</div>
+        <div class="req-badges">
+          ${guestWalkAll ? '<span class="req-badge compatible">✓ All animals allow guests</span>'
+            : guestWalkSome ? '<span class="req-badge warn">⚡ Some animals allow guests</span>'
+            : '<span class="req-badge" style="background:rgba(80,80,80,0.2);border:1px solid rgba(120,120,120,0.3);color:var(--text-dim)">✗ No walkthrough</span>'}
+        </div>
+      </div>
+      ${enrichmentGroups.length ? `
+      <div class="req-card">
+        <div class="req-card-title">Enrichment Groups</div>
+        <div class="req-badges">
+          <span class="req-badge" style="background:rgba(201,168,76,0.1);border-color:rgba(201,168,76,0.3);color:var(--gold-light)">♥ ${enrichmentGroups.length} group${enrichmentGroups.length!==1?'s':''} active</span>
+        </div>
+      </div>` : ''}
+    </div>
+
+    ${enrichmentGroups.length ? `
+    <div class="enrichment-section">
+      <div class="selected-header">Enrichment Groups</div>
+      ${enrichmentGroups.map(g => `
+        <div class="enrichment-group">
+          <div class="enrichment-group-title">♥ Enrichment Group</div>
+          <div class="enrichment-members">${g.map(name => {
+            const inSel = sel.some(a => a.name === name);
+            return `<span class="${inSel?'enrichment-active':''}">${name}</span>`;
+          }).join(' · ')}</div>
+        </div>
+      `).join('')}
+    </div>` : ''}
+
+    <div class="selected-header">Selected Animals <span class="count-badge">${sel.length}</span></div>
+    <div class="selected-animals">
+      ${sel.map(animal => `
+        <div class="selected-animal-card">
+          <img class="selected-animal-img" src="${getImgUrl(animal)}" alt="${animal.name}" loading="lazy" onerror="this.src='data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 52 52%22><rect fill=%22%231c2330%22 width=%2252%22 height=%2252%22/><text x=%2226%22 y=%2234%22 font-size=%2228%22 text-anchor=%22middle%22>🐾</text></svg>'">
+          <div class="selected-animal-info">
+            <div class="selected-animal-name">${animal.name}</div>
+            <div class="selected-animal-latin">${animal.latin}</div>
+            <div class="habitat-chips">
+              ${animal.continents.map(c => `<span class="habitat-chip hc-continent">${c}</span>`).join('')}
+              ${animal.biomes.map(b => `<span class="habitat-chip hc-biome">${b}</span>`).join('')}
+              ${animal.guestWalk ? '<span class="guest-walkthrough-badge">👣 Walkthrough</span>' : ''}
+            </div>
+          </div>
+          <button class="remove-btn" data-remove="${animal.id}" title="Remove">✕</button>
+        </div>
+      `).join('')}
+    </div>
+  `;
+
+  panel.querySelectorAll('[data-remove]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      selectedIds.delete(btn.dataset.remove);
+      renderAll();
+    });
+  });
+}
+
+function findEnrichmentGroups(selectedAnimals) {
+  const visited = new Set();
+  const groups = [];
+  
+  for (const animal of selectedAnimals) {
+    if (!animal.enrichedBy.length) continue;
+    const groupSet = new Set([animal.name, ...animal.enrichedBy]);
+    const key = [...groupSet].sort().join('|');
+    if (visited.has(key)) continue;
+    
+    // Check if any member of this group's enrichedBy is in the selection
+    const enrichPartners = animal.enrichedBy.filter(name => 
+      selectedAnimals.some(a => a.name === name)
+    );
+    if (enrichPartners.length) {
+      visited.add(key);
+      // Collect all members that appear in this enrichment relationship
+      const groupMembers = new Set([animal.name]);
+      enrichPartners.forEach(n => groupMembers.add(n));
+      // Also add anyone that lists animal as their enrichedBy partner
+      for (const other of selectedAnimals) {
+        if (other.enrichedBy.includes(animal.name)) groupMembers.add(other.name);
+      }
+      groups.push([...groupMembers]);
+    }
+  }
+  return groups;
+}
+
+function renderAll() {
+  renderFilters();
+  renderAnimalList();
+  renderRightPanel();
+}
+
+// ===== INIT =====
+document.getElementById('search-box').addEventListener('input', e => {
+  searchQuery = e.target.value;
+  renderAnimalList();
+});
+
+document.getElementById('clear-btn').addEventListener('click', () => {
+  selectedIds.clear();
+  renderAll();
+});
+
+renderAll();
+</script>
+</body>
+</html>
