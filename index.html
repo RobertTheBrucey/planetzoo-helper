@@ -898,6 +898,7 @@ let options = {
   allowIncompatTemp: false,
   allowIncompatTerrain: false,
   allowIncompatCoverage: false,
+  hideIncompat: false,
   includeExhibit: false,
 };
 let searchQuery = '';
@@ -1071,6 +1072,7 @@ function renderFilters() {
     ['allowIncompatTemp','Allow Incompatible Temperature'],
     ['allowIncompatTerrain','Allow Incompatible Terrain'],
     ['allowIncompatCoverage','Allow Incompatible Coverage'],
+    ['hideIncompat','Hide Incompatible Animals'],
     ['includeExhibit','Include Exhibit Animals'],
   ];
   optRow.innerHTML = optDefs.map(([k,label]) => `
@@ -1138,7 +1140,10 @@ function renderAnimalList() {
     return;
   }
 
-  container.innerHTML = visible.map(animal => {
+  container.innerHTML = visible.filter(animal => {
+    if (options.hideIncompat && !selectedIds.has(animal.id) && !isCompatibleWith(animal)) return false;
+    return true;
+  }).map(animal => {
     const isSelected = selectedIds.has(animal.id);
     const compat = isCompatibleWith(animal);
     const incompatCls = (!isSelected && !compat) ? 'incompatible-item' : '';
