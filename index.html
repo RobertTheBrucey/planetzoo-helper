@@ -663,6 +663,17 @@
   .terrain-total.warn  { background: rgba(200,168,69,0.12); border: 1px solid rgba(200,168,69,0.25); color: #e8c97a; }
   .terrain-total.error { background: rgba(139,32,32,0.12);  border: 1px solid var(--incompatible-border); color: #e07070; }
   .terrain-divider { margin: 10px 0 8px; border: none; border-top: 1px solid var(--border); }
+  .version-badge {
+    font-size: 0.68rem;
+    font-family: monospace;
+    color: var(--text-dim);
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    padding: 2px 7px;
+    border-radius: 3px;
+    margin-left: auto;
+    white-space: nowrap;
+  }
 </style>
 </head>
 <body>
@@ -1329,6 +1340,14 @@ document.getElementById('clear-btn').addEventListener('click', () => {
 });
 
 renderAll();
+
+if (window.location.hostname.startsWith('staging.')) {
+  const d = new Date(document.lastModified);
+  const ts = d.toISOString().slice(0,16).replace('T',' ') + ' UTC';
+  document.querySelector('header').insertAdjacentHTML(
+    'beforeend', `<span class="version-badge">staging · ${ts}</span>`
+  );
+}
 </script>
 </body>
 </html>
