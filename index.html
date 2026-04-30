@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Planet Zoo Habitat Planner</title>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAzMiAzMiI+CiAgPHJlY3Qgd2lkdGg9IjMyIiBoZWlnaHQ9IjMyIiByeD0iNSIgZmlsbD0iIzBkMTExNyIvPgogIDwhLS0gTWFpbiBwYWQgLS0+CiAgPGVsbGlwc2UgY3g9IjE2IiBjeT0iMjEiIHJ4PSI3IiByeT0iNiIgZmlsbD0iI2M5YTg0YyIvPgogIDwhLS0gVG9wLWxlZnQgdG9lIC0tPgogIDxlbGxpcHNlIGN4PSI4IiBjeT0iMTMiIHJ4PSIzIiByeT0iMy41IiBmaWxsPSIjYzlhODRjIi8+CiAgPCEtLSBUb3AtcmlnaHQgdG9lIC0tPgogIDxlbGxpcHNlIGN4PSIyNCIgY3k9IjEzIiByeD0iMyIgcnk9IjMuNSIgZmlsbD0iI2M5YTg0YyIvPgogIDwhLS0gTWlkLWxlZnQgdG9lIC0tPgogIDxlbGxpcHNlIGN4PSIxMSIgY3k9IjEwIiByeD0iMi44IiByeT0iMy4yIiBmaWxsPSIjYzlhODRjIi8+CiAgPCEtLSBNaWQtcmlnaHQgdG9lIC0tPgogIDxlbGxpcHNlIGN4PSIyMSIgY3k9IjEwIiByeD0iMi44IiByeT0iMy4yIiBmaWxsPSIjYzlhODRjIi8+CiAgPCEtLSBEYXJrIGlubmVyIHBhZCBkZXRhaWwgLS0+CiAgPGVsbGlwc2UgY3g9IjE2IiBjeT0iMjEuNSIgcng9IjQiIHJ5PSIzLjUiIGZpbGw9IiM4YTZhMmEiIG9wYWNpdHk9IjAuNSIvPgo8L3N2Zz4=">
-<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700&family=Crimson+Pro:ital,wght@0,300;0,400;0,500;1,300;1,400&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="fonts/fonts.css">
 <style>
   :root {
     --bg: #0d1117;
@@ -981,7 +981,7 @@ function getAnimalByName(name) { return ANIMALS.find(a => a.name === name); }
 
 function getImgUrl(animal) {
   if (!animal.img) return 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 36 36"><rect fill="%231c2330" width="36" height="36"/><text x="18" y="24" font-size="18" text-anchor="middle">🐾</text></svg>';
-  return `https://ewvgenstorage.blob.core.windows.net/planetzoosite/${animal.img}.png`;
+  return `img/${animal.img}.png`;
 }
 
 function getSelectedAnimals() {
