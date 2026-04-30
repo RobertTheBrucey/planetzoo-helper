@@ -1388,8 +1388,15 @@ renderAll();
 if (window.location.hostname.startsWith('staging.')) {
   const d = new Date(document.lastModified);
   const ts = d.toISOString().slice(0,16).replace('T',' ') + ' UTC';
+  const diffMs = Date.now() - d.getTime();
+  const diffMins = Math.floor(diffMs / 60000);
+  const ago = diffMins < 60
+    ? `${diffMins}m ago`
+    : diffMins < 1440
+      ? `${Math.floor(diffMins/60)}h ${diffMins%60}m ago`
+      : `${Math.floor(diffMins/1440)}d ${Math.floor((diffMins%1440)/60)}h ago`;
   document.querySelector('header').insertAdjacentHTML(
-    'beforeend', `<span class="version-badge">staging · ${ts}</span>`
+    'beforeend', `<span class="version-badge">staging · ${ts} · ${ago}</span>`
   );
 }
 </script>
