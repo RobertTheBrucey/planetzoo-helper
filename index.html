@@ -407,8 +407,10 @@
     flex-shrink: 0;
   }
 
-  .icon-heart { color: #d9534f; font-size: 0.75rem; }
-  .icon-shoe  { color: var(--text-dim); font-size: 0.75rem; }
+  .icon-heart           { color: #d9534f; font-size: 0.75rem; }
+  .icon-heart.mutual    { color: var(--gold-light); }
+  .icon-heart.one-way   { color: #e08848; }
+  .icon-shoe            { color: var(--text-dim); font-size: 0.75rem; }
 
   /* === RIGHT PANEL === */
   .right-panel {
@@ -833,6 +835,7 @@ let options = {
   allowIncompatCoverage: false,
   hideIncompat: true,
   includeExhibit: false,
+  showOnlyEnrichment: false,
 };
 let searchQuery = '';
 let enclosureSize = null;
@@ -1041,6 +1044,7 @@ function renderFilters() {
     ['allowIncompatCoverage','Allow Incompatible Coverage'],
     ['hideIncompat','Hide Incompatible Animals'],
     ['includeExhibit','Include Exhibit Animals'],
+    ['showOnlyEnrichment','Show Only Enrichment Matches'],
   ];
   optRow.innerHTML = optDefs.map(([k,label]) => `
     <label class="toggle-row">
@@ -1101,7 +1105,8 @@ function renderFilters() {
 function renderAnimalList() {
   const container = document.getElementById('animal-list');
   const visible = ANIMALS.filter(a => passesFilters(a));
-  
+  const sel = getSelectedAnimals();
+
   if (!visible.length) {
     container.innerHTML = `<div style="color:var(--text-dim);font-style:italic;padding:20px;text-align:center;font-size:0.85rem">No animals match your filters.</div>`;
     return;
@@ -1109,12 +1114,19 @@ function renderAnimalList() {
 
   container.innerHTML = visible.filter(animal => {
     if (options.hideIncompat && !selectedIds.has(animal.id) && !isCompatibleWith(animal)) return false;
+    if (options.showOnlyEnrichment) {
+      if (!sel.length) return animal.enrichedBy.length > 0;
+      if (!selectedIds.has(animal.id) && !getEnrichmentMatch(animal, sel)) return false;
+    }
     return true;
   }).map(animal => {
     const isSelected = selectedIds.has(animal.id);
     const compat = isCompatibleWith(animal);
     const incompatCls = (!isSelected && !compat) ? 'incompatible-item' : '';
     const exhibitCls = animal.exhibit ? 'exhibit' : '';
+    const enrichMatch = getEnrichmentMatch(animal, sel);
+    const heartCls = enrichMatch === 'mutual' ? 'mutual' : enrichMatch === 'one-way' ? 'one-way' : '';
+    const heartTitle = enrichMatch === 'mutual' ? 'Mutual enrichment' : enrichMatch === 'one-way' ? 'One-way enrichment' : 'Has enrichment partners';
     return `
       <div class="animal-item ${isSelected?'selected':''} ${incompatCls} ${exhibitCls}" data-id="${animal.id}" title="${animal.exhibit?'Exhibit animal':''}">
         <img class="animal-img-thumb" src="${getImgUrl(animal)}" alt="${animal.name}" loading="lazy" onerror="this.src='data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 36 36%22><rect fill=%22%231c2330%22 width=%2236%22 height=%2236%22/><text x=%2218%22 y=%2224%22 font-size=%2218%22 text-anchor=%22middle%22>🐾</text></svg>'">
@@ -1123,7 +1135,7 @@ function renderAnimalList() {
           <div class="animal-latin">${animal.latin}${animal.landMin ? `<span class="land-chip">${animal.landMin}m²</span>` : ''}</div>
         </div>
         <div class="animal-icons">
-          ${animal.enrichedBy.length ? '<span class="icon-heart" title="Has enrichment group">♥</span>' : ''}
+          ${animal.enrichedBy.length ? `<span class="icon-heart ${heartCls}" title="${heartTitle}">♥</span>` : ''}
           ${animal.guestWalk ? '<span class="icon-shoe" title="Guests can walk through">👣</span>' : ''}
         </div>
       </div>
@@ -1263,6 +1275,20 @@ function renderRightPanel() {
       renderAll();
     });
   });
+}
+
+function getEnrichmentMatch(animal, selectedAnimals) {
+  if (!selectedAnimals.length) return null;
+  let hasMutual = false;
+  let hasOneWay = false;
+  for (const sel of selectedAnimals) {
+    if (sel.id === animal.id) continue;
+    const aEnrichesS = animal.enrichedBy.includes(sel.name);
+    const sEnrichesA = sel.enrichedBy.includes(animal.name);
+    if (aEnrichesS && sEnrichesA) { hasMutual = true; break; }
+    if (aEnrichesS || sEnrichesA) hasOneWay = true;
+  }
+  return hasMutual ? 'mutual' : hasOneWay ? 'one-way' : null;
 }
 
 function findEnrichmentGroups(selectedAnimals) {

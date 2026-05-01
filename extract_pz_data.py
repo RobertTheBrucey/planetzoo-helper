@@ -273,25 +273,6 @@ def query_exhibits(conn: sqlite3.Connection) -> set:
     return set()
 
 
-# ---------------------------------------------------------------------------
-# Known game ID → committed app_id overrides.
-# Some game IDs don't round-trip through camelCase ↔ snake_case to match
-# the app IDs we chose. Add entries here when game IDs diverge from committed IDs.
-# ---------------------------------------------------------------------------
-GAME_ID_TO_COMMITTED_APP_ID: dict[str, str] = {
-    "AfricanElephant":        "african_savannah_elephant",
-    "AmazonGiantCentipede":   "amazon_centipede",
-    "Babirusa":               "north_sulawesi_babirusa",
-    "BlackWhiteRuffedLemur":  "bw_ruffed_lemur",
-    "CapuchinMonkey":         "colombian_capuchin",
-    "Cassowary":              "southern_cassowary",
-    "GalapagosGiantTortoise": "galapagos_tortoise",
-    "GreySeal":               "gray_seal",
-    "NorthIslandBrownKiwi":   "north_island_kiwi",
-    "PallasCat":              "pallass_cat",   # committed has typo (double-s), game is correct
-    "PrairieDog":             "black_tailed_prairie_dog",
-}
-
 
 # ---------------------------------------------------------------------------
 # Name / committed-data lookup helpers
@@ -348,10 +329,6 @@ def build_committed_map(animals_js: Path) -> dict[str, dict]:
 
 
 def lookup_committed(game_id: str, committed_map: dict) -> dict | None:
-    """Return the committed entry for a game_id, checking explicit overrides first."""
-    committed_app_id = GAME_ID_TO_COMMITTED_APP_ID.get(game_id)
-    if committed_app_id:
-        return committed_map.get(committed_app_id)
     return committed_map.get(game_id)
 
 
