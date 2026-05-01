@@ -1,3 +1,2 @@
-Add output of minimum enclosure size
-Update Claude.MD with instructions to pull images and download all external resources
-Move Animal data to a separate file.
+Highlight animals that match enrichment - use different colours/icons for 1 way enrichment and mutual enrichment
+Add a toggle to show only enrichment matches

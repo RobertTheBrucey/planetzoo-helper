@@ -17,7 +17,7 @@ Usage:
       --cobra-tools "C:/path/to/cobra-tools-master" \\
       --game-dir "C:/Program Files (x86)/Steam/steamapps/common/Planet Zoo" \\
       [--output extracted_animals.json] \\
-      [--js-output extracted_animals.js] \\
+      [--js-output animals.js] \\
       [--extract-dir /tmp/pz_extract] \\
       [--no-cleanup]
 """
@@ -92,12 +92,13 @@ def extract_fdb_files(cobra_tools: Path, ovl_path: Path, out_dir: Path) -> list[
     Returns list of extracted .fdb paths.
     """
     out_dir.mkdir(parents=True, exist_ok=True)
+    # Extract all file types then filter for .fdb — the --type flag is unreliable
+    # across cobra-tools versions and silently produces nothing when it fails to match.
     cmd = [
         sys.executable,
         str(cobra_tools / "ovl_tool_cmd.py"),
         "extract",
         "--game", "Planet Zoo",
-        "--type", "fdb",
         "--output", str(out_dir),
         str(ovl_path),
     ]
@@ -107,8 +108,7 @@ def extract_fdb_files(cobra_tools: Path, ovl_path: Path, out_dir: Path) -> list[
         text=True,
         cwd=str(cobra_tools),
     )
-    if "SUCCESS | Extracted" not in result.stdout and "SUCCESS | Extracting" not in result.stdout:
-        # May still have succeeded with warnings
+    if "SUCCESS | Extracting" not in result.stdout:
         if "SUCCESS" not in result.stdout:
             print(f"  WARNING: cobra-tools output for {ovl_path.name}:")
             for line in result.stdout.splitlines()[-5:]:
@@ -274,38 +274,97 @@ def query_exhibits(conn: sqlite3.Connection) -> set:
 
 
 # ---------------------------------------------------------------------------
-# Name lookup helpers
+# Known game ID → committed app_id overrides.
+# Some game IDs don't round-trip through camelCase ↔ snake_case to match
+# the app IDs we chose. Add entries here when game IDs diverge from committed IDs.
+# ---------------------------------------------------------------------------
+GAME_ID_TO_COMMITTED_APP_ID: dict[str, str] = {
+    "AfricanElephant":        "african_savannah_elephant",
+    "AmazonGiantCentipede":   "amazon_centipede",
+    "Babirusa":               "north_sulawesi_babirusa",
+    "BlackWhiteRuffedLemur":  "bw_ruffed_lemur",
+    "CapuchinMonkey":         "colombian_capuchin",
+    "Cassowary":              "southern_cassowary",
+    "GalapagosGiantTortoise": "galapagos_tortoise",
+    "GreySeal":               "gray_seal",
+    "NorthIslandBrownKiwi":   "north_island_kiwi",
+    "PallasCat":              "pallass_cat",   # committed has typo (double-s), game is correct
+    "PrairieDog":             "black_tailed_prairie_dog",
+}
+
+
+# ---------------------------------------------------------------------------
+# Name / committed-data lookup helpers
 # ---------------------------------------------------------------------------
 
-def build_id_to_name_map(index_html: Path) -> dict[str, str]:
+def build_committed_map(animals_js: Path) -> dict[str, dict]:
     """
-    Parse the ANIMALS array in index.html to build game_id → display_name.
-    Uses camelCase ↔ app id mapping.
+    Parse animals.js and return a merged lookup keyed by:
+      - committed app_id  (e.g. 'snow_leopard')
+      - guessed game_id   (e.g. 'SnowLeopard')
+    Each value is a dict with: app_id, name, latin, continents, biomes, img
     """
-    if not index_html.exists():
+    if not animals_js.exists():
         return {}
-    text = index_html.read_text(encoding="utf-8")
-    # Extract id and name pairs
-    entries = re.findall(r"\{id:'([^']+)',name:(['\"][^'\"]+['\"])", text)
-    result = {}
-    for app_id, raw_name in entries:
-        name = raw_name.strip("'\"")
-        # Build likely camelCase game ID from app id (snake_case)
-        game_id = "".join(w.capitalize() for w in app_id.split("_"))
-        result[game_id] = name
-        result[app_id] = name  # also map app_id directly
+    text = animals_js.read_text(encoding="utf-8")
+    result: dict[str, dict] = {}
+    for line in text.splitlines():
+        # Match both 'single-quoted' and "double-quoted" names (latter allows apostrophes)
+        m = re.search(r"\{id:'([^']+)',name:('(?:[^']+)'|\"(?:[^\"]+)\")", line)
+        if not m:
+            continue
+        app_id = m.group(1)
+        name   = m.group(2).strip("'\"")
+
+        latin_m = re.search(r"latin:'([^']*)'", line)
+        latin   = latin_m.group(1) if latin_m else ""
+
+        pack_m = re.search(r"pack:'([^']*)'", line)
+        c_pack = pack_m.group(1) if pack_m else ""
+
+        img_m = re.search(r"img:'([^']*)'", line)
+        img   = img_m.group(1) if img_m else ""
+
+        cont_m     = re.search(r"continents:(\[[^\]]*\])", line)
+        continents = re.findall(r"'([^']+)'", cont_m.group(1)) if cont_m else []
+
+        biomes_m = re.search(r"biomes:(\[[^\]]*\])", line)
+        biomes   = re.findall(r"'([^']+)'", biomes_m.group(1)) if biomes_m else []
+
+        entry = {
+            "app_id":     app_id,
+            "name":       name,
+            "latin":      latin,
+            "pack":       c_pack,
+            "continents": continents,
+            "biomes":     biomes,
+            "img":        img,
+        }
+        result[app_id] = entry
+        game_id_guess = "".join(w.capitalize() for w in app_id.split("_"))
+        result[game_id_guess] = entry
+
     return result
 
 
-def game_id_to_display(game_id: str, name_map: dict) -> str:
+def lookup_committed(game_id: str, committed_map: dict) -> dict | None:
+    """Return the committed entry for a game_id, checking explicit overrides first."""
+    committed_app_id = GAME_ID_TO_COMMITTED_APP_ID.get(game_id)
+    if committed_app_id:
+        return committed_map.get(committed_app_id)
+    return committed_map.get(game_id)
+
+
+def game_id_to_display(game_id: str, committed_map: dict) -> str:
     """Return display name for a game ID, falling back to auto-generated."""
-    if game_id in name_map:
-        return name_map[game_id]
+    entry = lookup_committed(game_id, committed_map)
+    if entry:
+        return entry["name"]
     return camel_to_display(game_id)
 
 
 def display_to_app_id(display_name: str) -> str:
-    """Convert display name to snake_case app id: 'Snow Leopard' → 'snow_leopard'."""
+    """Convert display name to snake_case app id: 'Snow Leopard' -> 'snow_leopard'."""
     clean = re.sub(r"[^a-zA-Z0-9 ]", "", display_name)
     return "_".join(clean.lower().split())
 
@@ -314,30 +373,41 @@ def display_to_app_id(display_name: str) -> str:
 # JS formatting
 # ---------------------------------------------------------------------------
 
-def format_js_entry(animal: dict, name_map: dict) -> str:
+def format_js_entry(animal: dict, committed_map: dict) -> str:
     """Format one animal dict as a single-line JS object matching the app format."""
-    game_id  = animal["game_id"]
-    name     = game_id_to_display(game_id, name_map)
-    app_id   = display_to_app_id(name)
-    latin    = animal.get("latin", "")
-    pack     = animal.get("pack", "Unknown")
-    conts    = animal.get("continents", [])
-    biomes   = animal.get("biomes", [])
-    img      = animal.get("img", "")
-    exhibit  = animal.get("exhibit", False)
-    guest    = animal.get("guestWalk", False)
+    game_id = animal["game_id"]
 
-    # enrichedBy: convert game IDs → display names
-    raw_enriched = sorted(animal.get("enrichedBy", []))
-    enriched_names = [game_id_to_display(e, name_map) for e in raw_enriched]
-    def js_str(s):
-        if "'" in s:
-            return f'"{s}"'
-        return f"'{s}'"
+    # Game data is the source of truth for all gameplay fields.
+    # Reference/committed data only fills in fields the game DB doesn't have.
+    name   = camel_to_display(game_id)
+    app_id = display_to_app_id(name)
+    pack   = animal.get("pack", "Unknown")
+    exhibit = animal.get("exhibit", False)
+    guest   = animal.get("guestWalk", False)
+
+    # Supplement with committed data for fields not in the game DB
+    committed  = lookup_committed(game_id, committed_map)
+    latin      = committed["latin"]      if committed else ""
+    continents = committed["continents"] if committed else []
+    biomes     = committed["biomes"]     if committed else []
+    img        = committed["img"]        if committed else ""
+    # Use committed pack if game couldn't determine it
+    if pack == "Unknown" and committed and committed.get("pack"):
+        pack = committed["pack"]
+
+    # enrichedBy: convert game IDs to display names
+    raw_enriched   = sorted(animal.get("enrichedBy", []))
+    enriched_names = [game_id_to_display(e, committed_map) for e in raw_enriched]
+
+    def js_str(s: str) -> str:
+        return f'"{s}"' if "'" in s else f"'{s}'"
+
     enriched_js = "[" + ",".join(js_str(n) for n in enriched_names) + "]"
+    conts_js    = "[" + ",".join(f"'{c}'" for c in continents) + "]"
+    biomes_js   = "[" + ",".join(f"'{b}'" for b in biomes) + "]"
 
-    conts_js  = "[" + ",".join(f"'{c}'" for c in conts) + "]"
-    biomes_js = "[" + ",".join(f"'{b}'" for b in biomes) + "]"
+    def rng(pair: list) -> str:
+        return f"[{pair[0]},{pair[1]}]"
 
     if exhibit:
         return (
@@ -348,21 +418,18 @@ def format_js_entry(animal: dict, name_map: dict) -> str:
             f"plants:[0,100]}},"
         )
 
-    t = animal.get("terrain", {})
+    t      = animal.get("terrain", {})
     plants = animal.get("plants", [0, 100])
     land   = animal.get("landMin", 0)
     bar    = animal.get("barrier", {})
 
-    def rng(pair):
-        return f"[{pair[0]},{pair[1]}]"
-
     terrain_js = (
-        f"{{grassS:{rng(t.get('grassS',[0,100]))},"
-        f"grassL:{rng(t.get('grassL',[0,100]))},"
-        f"soil:{rng(t.get('soil',[0,100]))},"
-        f"rock:{rng(t.get('rock',[0,100]))},"
-        f"sand:{rng(t.get('sand',[0,100]))},"
-        f"snow:{rng(t.get('snow',[0,100])}}}}"
+        f"{{grassS:{rng(t.get('grassS', [0,100]))},"
+        f"grassL:{rng(t.get('grassL', [0,100]))},"
+        f"soil:{rng(t.get('soil',   [0,100]))},"
+        f"rock:{rng(t.get('rock',   [0,100]))},"
+        f"sand:{rng(t.get('sand',   [0,100]))},"
+        f"snow:{rng(t.get('snow',   [0,100]))}}}"
     )
     barrier_js = f"{{grade:{bar.get('grade','?')},height:{bar.get('height','?')}}}"
 
@@ -433,6 +500,7 @@ def extract_all(cobra_tools: Path, game_dir: Path, extract_root: Path) -> dict:
 
                 elif fname.endswith("exhibits.fdb"):
                     exhibit_set.update(query_exhibits(conn))
+                    definitions.update(query_definitions(conn))
 
             finally:
                 conn.close()
@@ -488,8 +556,8 @@ def main():
         help="Output JSON file (default: extracted_animals.json)",
     )
     parser.add_argument(
-        "--js-output", default="extracted_animals.js", metavar="PATH",
-        help="Output JS entries file (default: extracted_animals.js)",
+        "--js-output", default="animals.js", metavar="PATH",
+        help="Output JS file (default: animals.js — the live data file)",
     )
     parser.add_argument(
         "--extract-dir", default=None, metavar="PATH",
@@ -500,8 +568,8 @@ def main():
         help="Keep extracted OVL files after the script finishes",
     )
     parser.add_argument(
-        "--index-html", default=None, metavar="PATH",
-        help="Path to index.html for existing animal name lookup (optional)",
+        "--animals-js", default=None, metavar="PATH",
+        help="Path to animals.js for existing animal name lookup (default: animals.js next to this script)",
     )
     args = parser.parse_args()
 
@@ -513,10 +581,11 @@ def main():
     if not game_dir.exists():
         sys.exit(f"ERROR: Game directory not found: {game_dir}")
 
-    # Resolve index.html for name lookups
-    index_html = Path(args.index_html) if args.index_html else Path(__file__).parent / "index.html"
-    name_map = build_id_to_name_map(index_html)
-    print(f"Loaded {len(name_map)} existing animal names from {index_html.name}.")
+    # Load committed animal data for merging (name, latin, continents, biomes, img)
+    animals_js_src = Path(args.animals_js) if args.animals_js else Path(__file__).parent / "animals.js"
+    committed_map = build_committed_map(animals_js_src)
+    known_count = sum(1 for k in committed_map if "_" in k)  # count app_id keys only
+    print(f"Loaded {known_count} committed animals from {animals_js_src.name}.")
 
     # Set up extract directory
     tmp_owned = False
@@ -556,28 +625,49 @@ def main():
     )
     print(f"Wrote {len(animals)} animals to {output_path}")
 
-    # Write JS entries
+    # Write JS entries — back up existing file first
     js_path = Path(args.js_output)
+    if js_path.exists():
+        backup_path = js_path.with_suffix(".js.bak")
+        shutil.copy2(js_path, backup_path)
+        print(f"Backed up {js_path} -> {backup_path}")
     habitat_count = sum(1 for a in animals.values() if not a["exhibit"])
     exhibit_count = sum(1 for a in animals.values() if a["exhibit"])
     lines = [
-        f"// Generated by extract_pz_data.py",
+        f"// Generated by extract_pz_data.py — do not edit by hand.",
         f"// {habitat_count} habitat animals, {exhibit_count} exhibit animals",
+        f"// Terrain/barrier/plants/landMin data is authoritative from game files.",
+        f"// latin, continents, biomes, img are preserved from the previous animals.js.",
+        f"// New animals (latin:'') need those fields filled in manually.",
         f"// Missing barrier data is shown as grade:? height:? — fill from in-game Zoopedia.",
-        f"// Missing latin names and biome/continent lists must be filled manually.",
         "",
         "// ===== HABITAT ANIMALS =====",
     ]
     for game_id, rec in sorted(animals.items()):
         if not rec["exhibit"]:
-            lines.append(format_js_entry(rec, name_map))
+            lines.append(format_js_entry(rec, committed_map))
     lines += ["", "// ===== EXHIBIT ANIMALS ====="]
     for game_id, rec in sorted(animals.items()):
         if rec["exhibit"]:
-            lines.append(format_js_entry(rec, name_map))
+            lines.append(format_js_entry(rec, committed_map))
 
     js_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
     print(f"Wrote JS entries to {js_path}")
+
+    # Check for committed animals not found in new extraction
+    if committed_map:
+        extracted_app_ids = {
+            display_to_app_id(camel_to_display(gid))
+            for gid in animals
+        }
+        committed_app_ids = {k for k in committed_map if "_" in k or k[0].islower()}
+        not_in_extraction = sorted(committed_app_ids - extracted_app_ids)
+        if not_in_extraction:
+            print(f"\nCommitted animals NOT found in extraction ({len(not_in_extraction)}) — check GAME_ID_TO_COMMITTED_APP_ID:")
+            for aid in not_in_extraction:
+                print(f"  {aid}")
+        else:
+            print(f"\nAll {len(committed_app_ids)} committed animals accounted for in extraction.")
 
     # Summary
     missing_barrier = [
