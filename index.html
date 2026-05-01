@@ -88,9 +88,37 @@
 
   .layout {
     display: grid;
-    grid-template-columns: 340px 1fr;
+    grid-template-columns: 1fr 1fr 1fr 1fr;
     height: calc(100vh - 65px);
     overflow: hidden;
+  }
+   
+  /* Ensure middle panel takes up remaining space */
+  .animal-list-section {
+    grid-column: 2;
+  }
+   
+  /* 3RD PANEL - SELECTED ANIMALS */
+  .selected-panel {
+    overflow-y: auto;
+    padding: 24px;
+    background: var(--bg);
+    border-left: 1px solid var(--border);
+    grid-column: 3;
+  }
+   
+  /* 4TH PANEL - ENCLOSURE DETAILS */
+  .enclosure-panel {
+    overflow-y: auto;
+    padding: 24px;
+    background: var(--bg);
+    border-left: 1px solid var(--border);
+    grid-column: 4;
+  }
+  
+  /* Ensure middle panel takes up remaining space */
+  .animal-list-section {
+    grid-column: 2;
   }
 
   /* === LEFT PANEL === */
@@ -100,14 +128,15 @@
     display: flex;
     flex-direction: column;
     overflow: hidden;
+    grid-column: 1;
   }
 
   .filters-section {
     padding: 16px;
     border-bottom: 1px solid var(--border);
     overflow-y: auto;
-    flex-shrink: 0;
-    max-height: 50vh;
+    flex: 1;
+    min-height: 0;
   }
 
   .section-title {
@@ -272,7 +301,6 @@
 
   /* === ANIMAL LIST === */
   .animal-list-section {
-    flex: 1;
     overflow: hidden;
     display: flex;
     flex-direction: column;
@@ -440,6 +468,8 @@
     overflow-y: auto;
     padding: 24px;
     background: var(--bg);
+    border-left: 1px solid var(--border);
+    grid-column: 3;
   }
 
   .panel-title {
@@ -776,7 +806,7 @@
 </header>
 
 <div class="layout">
-  <!-- LEFT PANEL -->
+  <!-- LEFT PANEL - OPTIONS -->
   <div class="left-panel">
     <div class="filters-section">
 
@@ -798,32 +828,47 @@
         <div class="tag-group" id="continent-filters"></div>
       </div>
 
-    </div>
+      <div class="filter-group">
+        <div class="section-title">Enclosure Size</div>
+        <div class="enclosure-row">
+          <input type="number" class="enclosure-input" id="enclosure-input" min="0" step="10" placeholder="any">
+          <span class="enclosure-unit">m²</span>
+          <button class="enclosure-clear" id="enclosure-clear" title="Clear">✕</button>
+        </div>
+      </div>
 
-    <div class="animal-list-section">
-      <div class="list-header">
-        <input type="text" class="search-box" id="search-box" placeholder="Search animals…">
-        <button class="clear-btn" id="clear-btn">Clear All</button>
-      </div>
-      <div class="enclosure-row">
-        <span class="enclosure-label">Enclosure size</span>
-        <input type="number" class="enclosure-input" id="enclosure-input" min="0" step="10" placeholder="any">
-        <span class="enclosure-unit">m²</span>
-        <button class="enclosure-clear" id="enclosure-clear" title="Clear">✕</button>
-      </div>
-      <div class="animal-scroll" id="animal-list"></div>
     </div>
   </div>
 
-  <!-- RIGHT PANEL -->
-  <div class="right-panel" id="right-panel">
-    <div class="panel-title">Habitat Requirements</div>
+  <!-- MIDDLE PANEL - ANIMAL LIST -->
+  <div class="animal-list-section">
+    <div class="list-header">
+      <input type="text" class="search-box" id="search-box" placeholder="Search animals…">
+      <button class="clear-btn" id="clear-btn">Clear All</button>
+    </div>
+    <div class="animal-scroll" id="animal-list"></div>
+  </div>
+
+  <!-- 3RD PANEL - SELECTED ANIMALS -->
+  <div class="selected-panel" id="selected-panel">
+    <div class="panel-title">Selected Animals</div>
     <div class="empty-state">
-      Click on animals in the list to add them to your habitat.<br>
-      The planner will show combined requirements and compatibility.
+      No animals selected.<br>
+      Click on animals in the list to add them to your habitat.
+    </div>
+  </div>
+
+  <!-- 4TH PANEL - ENCLOSURE DETAILS -->
+  <div class="enclosure-panel" id="enclosure-panel">
+    <div class="panel-title">Enclosure Details</div>
+    <div class="empty-state">
+      Select animals to view enclosure requirements.
     </div>
   </div>
 </div>
+
+</body>
+</html>
 
 <script src="animals.js"></script>
 <script>
@@ -1368,7 +1413,8 @@ function findEnrichmentGroups(selectedAnimals) {
 function renderAll() {
   renderFilters();
   renderAnimalList();
-  renderRightPanel();
+  renderSelectedPanel();
+  renderEnclosurePanel();
 }
 
 // ===== INIT =====
@@ -1382,17 +1428,23 @@ document.getElementById('clear-btn').addEventListener('click', () => {
   renderAll();
 });
 
-document.getElementById('enclosure-input').addEventListener('input', e => {
-  const v = parseFloat(e.target.value);
-  enclosureSize = (!e.target.value || isNaN(v) || v <= 0) ? null : v;
-  renderAnimalList();
-});
+// Ensure the enclosure input elements exist before adding event listeners
+const enclosureInput = document.getElementById('enclosure-input');
+const enclosureClear = document.getElementById('enclosure-clear');
 
-document.getElementById('enclosure-clear').addEventListener('click', () => {
-  document.getElementById('enclosure-input').value = '';
-  enclosureSize = null;
-  renderAnimalList();
-});
+if (enclosureInput && enclosureClear) {
+  enclosureInput.addEventListener('input', e => {
+    const v = parseFloat(e.target.value);
+    enclosureSize = (!e.target.value || isNaN(v) || v <= 0) ? null : v;
+    renderAnimalList();
+  });
+
+  enclosureClear.addEventListener('click', () => {
+    enclosureInput.value = '';
+    enclosureSize = null;
+    renderAnimalList();
+  });
+}
 
 renderAll();
 
@@ -1412,6 +1464,142 @@ if (window.location.hostname.startsWith('staging.')) {
       'beforeend', `<span class="version-badge">staging · ${ts} · ${ago}</span>`
     );
   }
+}
+
+function renderSelectedPanel() {
+  const panel = document.getElementById('selected-panel');
+  const sel = getSelectedAnimals();
+
+  if (!sel.length) {
+    panel.innerHTML = `
+      <div class="panel-title">Selected Animals</div>
+      <div class="empty-state">
+        No animals selected.<br>
+        Click on animals in the list to add them to your habitat.
+      </div>
+    `;
+    return;
+  }
+
+  panel.innerHTML = `
+    <div class="panel-title">Selected Animals <span class="count-badge">${sel.length}</span></div>
+    <div class="selected-animals">
+      ${sel.map(animal => `
+        <div class="selected-animal-card">
+          <img class="selected-animal-img" src="${getImgUrl(animal)}" alt="${animal.name}" loading="lazy" onerror="this.src='data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 52 52%22><rect fill=%22%231c2330%22 width=%2252%22 height=%2252%22/><text x=%2226%22 y=%2234%22 font-size=%2228%22 text-anchor=%22middle%22>🐾</text></svg>'">
+          <div class="selected-animal-info">
+            <div class="selected-animal-name">${animal.name}</div>
+            <div class="selected-animal-latin">${animal.latin}</div>
+            <div class="habitat-chips">
+              ${animal.continents.map(c => `<span class="habitat-chip hc-continent">${c}</span>`).join('')}
+              ${animal.biomes.map(b => `<span class="habitat-chip hc-biome">${b}</span>`).join('')}
+              ${animal.guestWalk ? '<span class="guest-walkthrough-badge">👣 Walkthrough</span>' : ''}
+            </div>
+          </div>
+          <button class="remove-btn" data-remove="${animal.id}" title="Remove">✕</button>
+        </div>
+      `).join('')}
+    </div>
+  `;
+
+  panel.querySelectorAll('[data-remove]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      selectedIds.delete(btn.dataset.remove);
+      renderAll();
+    });
+  });
+}
+
+function renderEnclosurePanel() {
+  const panel = document.getElementById('enclosure-panel');
+  const sel = getSelectedAnimals();
+
+  if (!sel.length) {
+    panel.innerHTML = `
+      <div class="panel-title">Enclosure Details</div>
+      <div class="empty-state">
+        Select animals to view enclosure requirements.
+      </div>
+    `;
+    return;
+  }
+
+  const combinedContinents = getCombinedContinents();
+  const combinedBiomes = getCombinedBiomes();
+
+  // Find enrichment groups active in selection
+  const enrichmentGroups = findEnrichmentGroups(sel);
+
+  // Compatibility warnings
+  let warnings = [];
+  if (sel.length > 1) {
+    // Check continent overlaps
+    const noContOverlap = sel.filter(a => ![...combinedContinents].some(c => a.continents.includes(c)));
+    if (noContOverlap.length) warnings.push(`Continent mismatch: ${noContOverlap.map(a=>a.name).join(', ')}`);
+    const noBiomeOverlap = sel.filter(a => ![...combinedBiomes].some(b => a.biomes.includes(b)));
+    if (noBiomeOverlap.length) warnings.push(`Biome mismatch: ${noBiomeOverlap.map(a=>a.name).join(', ')}`);
+  }
+
+  const guestWalkAll = sel.every(a => a.guestWalk);
+  const guestWalkSome = sel.some(a => a.guestWalk);
+
+  panel.innerHTML = `
+    <div class="panel-title">Habitat Requirements <span style="font-size:0.8rem;font-weight:400;color:var(--text-dim)">(${sel.length} animal${sel.length!==1?'s':''})</span></div>
+
+    ${warnings.map(w => `<div class="compat-warning">⚠ ${w}</div>`).join('')}
+
+    <div class="req-grid">
+      <div class="req-card">
+        <div class="req-card-title">Compatible Continents</div>
+        <div class="req-badges">
+          ${Array.from(combinedContinents).map(c => `<span class="req-badge required">
+            <span class="continent-icon ${CONTINENT_COLORS[c]||''}" style="width:10px;height:10px;border-radius:50%;display:inline-block;flex-shrink:0"></span>
+            ${c}
+          </span>`).join('') || '<span style="color:var(--text-dim);font-size:0.75rem;font-style:italic">None in common</span>'}
+        </div>
+      </div>
+      <div class="req-card">
+        <div class="req-card-title">Compatible Biomes</div>
+        <div class="req-badges">
+          ${Array.from(combinedBiomes).map(b => `<span class="req-badge compatible">
+            <span class="biome-dot bd-${b.toLowerCase()}" style="width:8px;height:8px;border-radius:50%;display:inline-block;flex-shrink:0"></span>
+            ${b}
+          </span>`).join('') || '<span style="color:var(--text-dim);font-size:0.75rem;font-style:italic">None in common</span>'}
+        </div>
+      </div>
+      <div class="req-card">
+        <div class="req-card-title">Guest Walkthrough</div>
+        <div class="req-badges">
+          ${guestWalkAll ? '<span class="req-badge compatible">✓ All animals allow guests</span>'
+            : guestWalkSome ? '<span class="req-badge warn">⚡ Some animals allow guests</span>'
+            : '<span class="req-badge" style="background:rgba(80,80,80,0.2);border:1px solid rgba(120,120,120,0.3);color:var(--text-dim)">✗ No walkthrough</span>'}
+        </div>
+      </div>
+      ${enrichmentGroups.length ? `
+      <div class="req-card">
+        <div class="req-card-title">Enrichment Groups</div>
+        <div class="req-badges">
+          <span class="req-badge" style="background:rgba(201,168,76,0.1);border-color:rgba(201,168,76,0.3);color:var(--gold-light)">♥ ${enrichmentGroups.length} group${enrichmentGroups.length!==1?'s':''} active</span>
+        </div>
+      </div>` : ''}
+    </div>
+
+    ${renderTerrainSection(sel)}
+
+    ${enrichmentGroups.length ? `
+    <div class="enrichment-section">
+      <div class="selected-header">Enrichment Groups</div>
+      ${enrichmentGroups.map(g => `
+        <div class="enrichment-group">
+          <div class="enrichment-group-title">♥ Enrichment Group</div>
+          <div class="enrichment-members">${g.map(name => {
+            const inSel = sel.some(a => a.name === name);
+            return `<span class="${inSel?'enrichment-active':''}">${name}</span>`;
+          }).join(' · ')}</div>
+        </div>
+      `).join('')}
+    </div>` : ''}
+  `;
 }
 </script>
 </body>
