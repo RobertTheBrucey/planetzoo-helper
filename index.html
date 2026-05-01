@@ -211,7 +211,30 @@
     border-color: var(--selected-border);
     color: var(--text-bright);
   }
-
+  
+  .filter-buttons {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 10px;
+  }
+  
+  .filter-buttons button {
+    padding: 6px 12px;
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    color: var(--text);
+    cursor: pointer;
+    transition: all 0.2s;
+    font-family: 'Crimson Pro', serif;
+    font-size: 0.9rem;
+  }
+  
+  .filter-buttons button:hover {
+    background: var(--bg4);
+    border-color: var(--border-light);
+  }
+  
   /* Continent icons */
   .continent-tag {
     display: flex;
@@ -826,6 +849,9 @@ const BIOME_COLORS = {
 let selectedIds = new Set();
 let activePacks = new Set();
 let activeBiomes = new Set();
+
+// Initialize with all packs selected except Barnyard
+PACKS.filter(p => p !== 'Barnyard').forEach(p => activePacks.add(p));
 let activeContinents = new Set();
 let options = {
   allowIncompatContinent: false,
@@ -1060,15 +1086,34 @@ function renderFilters() {
   });
 
   // Packs
-  document.getElementById('pack-filters').innerHTML = PACKS.map(p => `
-    <span class="tag ${activePacks.has(p)?'active':''}" data-pack="${p}">${p}</span>
-  `).join('');
+  document.getElementById('pack-filters').innerHTML = `
+    <div class="filter-buttons">
+      <button id="select-all-packs">Select All</button>
+      <button id="deselect-all-packs">Deselect All</button>
+    </div>
+    ${PACKS.map(p => `
+      <span class="tag ${activePacks.has(p)?'active':''}" data-pack="${p}">${p}</span>
+    `).join('')}
+  `;
   document.querySelectorAll('[data-pack]').forEach(el => {
     el.addEventListener('click', () => {
       const p = el.dataset.pack;
       activePacks.has(p) ? activePacks.delete(p) : activePacks.add(p);
       renderAll();
     });
+  });
+
+  // Add event listeners for select/deselect all buttons
+  document.getElementById('select-all-packs').addEventListener('click', () => {
+    // Select all packs except 'Barnyard'
+    PACKS.filter(p => p !== 'Barnyard').forEach(p => activePacks.add(p));
+    renderAll();
+  });
+
+  document.getElementById('deselect-all-packs').addEventListener('click', () => {
+    // Deselect all packs
+    activePacks.clear();
+    renderAll();
   });
 
   // Biomes
