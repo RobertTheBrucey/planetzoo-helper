@@ -9,8 +9,11 @@ For each habitat animal found, outputs:
   barrier grade and height
   enrichedBy partner names
   guestWalk flag
+  latin (scientific) name
+  display name (with correct punctuation)
+  biomes and continents
 
-For exhibit animals, outputs the exhibit flag with no terrain/barrier data.
+All data is extracted directly from game files — no reference animals.js needed.
 
 Usage:
   python extract_pz_data.py \\
@@ -65,6 +68,30 @@ CONTENT_PACK_NAMES = {
     "ContentAnniversary3": "Anniversary",
 }
 
+# ---------------------------------------------------------------------------
+# Game identifier → app display name mappings.
+# The game's FDB files use different names than the app's JS arrays.
+# ---------------------------------------------------------------------------
+BIOME_NAME_MAP = {
+    "Savannah":  "Grassland",
+    "Rainforest": "Tropical",
+    "Tundra":    "Tundra",
+    "Taiga":     "Taiga",
+    "Temperate": "Temperate",
+    "Desert":    "Desert",
+    "Aquatic":   "Aquatic",
+}
+
+CONTINENT_NAME_MAP = {
+    "Europe":       "Europe",
+    "Asia":         "Asia",
+    "Africa":       "Africa",
+    "NorthAmerica": "North America",
+    "SouthAmerica": "South America",
+    "Australasia":  "Oceania",
+    # Arctic and Antarctic have no app equivalent — skip them
+}
+
 
 def camel_to_display(name: str) -> str:
     """Convert CamelCase game ID to a display name: 'SnowLeopard' → 'Snow Leopard'."""
@@ -86,35 +113,89 @@ def find_content_dirs(game_dir: Path) -> list[Path]:
     return dirs
 
 
+def _run_cobra_extract(cobra_tools: Path, ovl_path: Path, out_dir: Path) -> subprocess.CompletedProcess:
+    out_dir.mkdir(parents=True, exist_ok=True)
+    return subprocess.run(
+        [sys.executable, str(cobra_tools / "ovl_tool_cmd.py"), "extract",
+         "--game", "Planet Zoo", "--output", str(out_dir), str(ovl_path)],
+        capture_output=True, text=True, cwd=str(cobra_tools),
+    )
+
+
 def extract_fdb_files(cobra_tools: Path, ovl_path: Path, out_dir: Path) -> list[Path]:
     """
     Extract all .fdb files from a single OVL using cobra-tools.
     Returns list of extracted .fdb paths.
     """
-    out_dir.mkdir(parents=True, exist_ok=True)
-    # Extract all file types then filter for .fdb — the --type flag is unreliable
-    # across cobra-tools versions and silently produces nothing when it fails to match.
-    cmd = [
-        sys.executable,
-        str(cobra_tools / "ovl_tool_cmd.py"),
-        "extract",
-        "--game", "Planet Zoo",
-        "--output", str(out_dir),
-        str(ovl_path),
-    ]
-    result = subprocess.run(
-        cmd,
-        capture_output=True,
-        text=True,
-        cwd=str(cobra_tools),
-    )
+    result = _run_cobra_extract(cobra_tools, ovl_path, out_dir)
     if "SUCCESS | Extracting" not in result.stdout:
         if "SUCCESS" not in result.stdout:
             print(f"  WARNING: cobra-tools output for {ovl_path.name}:")
             for line in result.stdout.splitlines()[-5:]:
                 print(f"    {line}")
-
     return list(out_dir.glob("*.fdb"))
+
+
+def find_loc_ovl(content_dir: Path) -> Path | None:
+    """Return path to the English localisation OVL for a content pack, or None."""
+    p = content_dir / "Localised" / "English" / "UnitedKingdom" / "Loc.ovl"
+    return p if p.exists() else None
+
+
+def extract_loc_files(cobra_tools: Path, loc_ovl: Path, out_dir: Path) -> None:
+    """Extract Loc.ovl txt files into out_dir."""
+    result = _run_cobra_extract(cobra_tools, loc_ovl, out_dir)
+    if "SUCCESS" not in result.stdout:
+        print(f"  WARNING: loc extraction may have failed for {loc_ovl}")
+
+
+def parse_loc_data(loc_dir: Path) -> dict:
+    """
+    Scan extracted localisation txt files and return data keyed by game_id_lower.
+
+    Collects:
+      name   — from animal_{gid}.txt (display name with correct punctuation)
+      latin  — from zoopedia_scientificname_{gid}.txt
+      barrier — from zoopedia_barrierrequirementsdescription_{gid}.txt
+
+    game_id_lower is game_id.lower() with no other transformation, e.g.
+    AlpineGoat → alpinegoat.  Animal name files (not plural/sign variants) have
+    no underscore in the part after "animal_", which is how they are filtered.
+    """
+    result: dict[str, dict] = {}
+
+    for txt in loc_dir.glob("*.txt"):
+        stem = txt.stem
+        try:
+            content = txt.read_text(encoding="utf-8").strip()
+        except OSError:
+            continue
+
+        if stem.startswith("animal_"):
+            gid_lower = stem[len("animal_"):]
+            # Game IDs are CamelCase so game_id.lower() has no underscores.
+            # Plural/sign/food variants all contain an underscore — skip them.
+            if "_" in gid_lower:
+                continue
+            result.setdefault(gid_lower, {})["name"] = content
+
+        elif stem.startswith("zoopedia_scientificname_"):
+            gid_lower = stem[len("zoopedia_scientificname_"):]
+            result.setdefault(gid_lower, {})["latin"] = content
+
+        elif stem.startswith("zoopedia_barrierrequirementsdescription_"):
+            gid_lower = stem[len("zoopedia_barrierrequirementsdescription_"):]
+            m = re.search(
+                r'Grade\s+(\d+)(?:\s+Climb\s+Proof)?\s+>(\d+(?:\.\d+)?)m',
+                content, re.IGNORECASE,
+            )
+            if m:
+                result.setdefault(gid_lower, {})["barrier"] = {
+                    "grade":  int(m.group(1)),
+                    "height": float(m.group(2)),
+                }
+
+    return result
 
 
 def open_db(path: Path) -> sqlite3.Connection | None:
@@ -250,10 +331,32 @@ def query_barrier(conn: sqlite3.Connection) -> dict:
     return out
 
 
+def query_biome_prefs(conn: sqlite3.Connection) -> dict:
+    """AnimalBiomePreferences → dict of game_id → list of app biome names."""
+    if not table_exists(conn, "AnimalBiomePreferences"):
+        return {}
+    out: dict[str, list] = {}
+    for row in conn.execute("SELECT AnimalType, BiomeName FROM AnimalBiomePreferences"):
+        mapped = BIOME_NAME_MAP.get(row["BiomeName"])
+        if mapped:
+            out.setdefault(row["AnimalType"], []).append(mapped)
+    return out
+
+
+def query_continent_prefs(conn: sqlite3.Connection) -> dict:
+    """AnimalContinentPreferences → dict of game_id → list of app continent names."""
+    if not table_exists(conn, "AnimalContinentPreferences"):
+        return {}
+    out: dict[str, list] = {}
+    for row in conn.execute("SELECT AnimalType, ContinentName FROM AnimalContinentPreferences"):
+        mapped = CONTINENT_NAME_MAP.get(row["ContinentName"])
+        if mapped:
+            out.setdefault(row["AnimalType"], []).append(mapped)
+    return out
+
+
 def query_exhibits(conn: sqlite3.Connection) -> set:
     """Return set of animal types that are exhibits (from *exhibits.fdb)."""
-    # Exhibit databases have different schemas depending on the exhibit type.
-    # We just want the species/animal type names. Common table names:
     for table in ("ExhibitAnimalDefinitions", "AnimalDefinitions", "SpeciesEnum"):
         if table_exists(conn, table):
             try:
@@ -273,24 +376,20 @@ def query_exhibits(conn: sqlite3.Connection) -> set:
     return set()
 
 
-
 # ---------------------------------------------------------------------------
-# Name / committed-data lookup helpers
+# Committed-data helpers (used by rename_images.py; kept for import)
 # ---------------------------------------------------------------------------
 
 def build_committed_map(animals_js: Path) -> dict[str, dict]:
     """
-    Parse animals.js and return a merged lookup keyed by:
-      - committed app_id  (e.g. 'snow_leopard')
-      - guessed game_id   (e.g. 'SnowLeopard')
-    Each value is a dict with: app_id, name, latin, continents, biomes, img
+    Parse animals.js and return a merged lookup keyed by app_id and guessed game_id.
+    Used by rename_images.py to build the old→new image rename mapping.
     """
     if not animals_js.exists():
         return {}
     text = animals_js.read_text(encoding="utf-8")
     result: dict[str, dict] = {}
     for line in text.splitlines():
-        # Match both 'single-quoted' and "double-quoted" names (latter allows apostrophes)
         m = re.search(r"\{id:'([^']+)',name:('(?:[^']+)'|\"(?:[^\"]+)\")", line)
         if not m:
             continue
@@ -328,53 +427,53 @@ def build_committed_map(animals_js: Path) -> dict[str, dict]:
     return result
 
 
-def lookup_committed(game_id: str, committed_map: dict) -> dict | None:
-    return committed_map.get(game_id)
-
-
-def game_id_to_display(game_id: str, committed_map: dict) -> str:
-    """Return display name for a game ID, falling back to auto-generated."""
-    entry = lookup_committed(game_id, committed_map)
-    if entry:
-        return entry["name"]
-    return camel_to_display(game_id)
-
-
 def display_to_app_id(display_name: str) -> str:
     """Convert display name to snake_case app id: 'Snow Leopard' -> 'snow_leopard'."""
-    clean = re.sub(r"[^a-zA-Z0-9 ]", "", display_name)
+    clean = display_name.replace("-", " ")          # hyphens become underscores
+    clean = re.sub(r"[^a-zA-Z0-9 ]", "", clean)    # strip apostrophes, accents, etc.
     return "_".join(clean.lower().split())
+
+
+def game_id_to_display(game_id: str, loc_map: dict) -> str:
+    """Return display name for a game ID using loc data, falling back to auto-generated."""
+    loc = loc_map.get(game_id.lower(), {})
+    if loc.get("name"):
+        return loc["name"]
+    return camel_to_display(game_id)
 
 
 # ---------------------------------------------------------------------------
 # JS formatting
 # ---------------------------------------------------------------------------
 
-def format_js_entry(animal: dict, committed_map: dict) -> str:
+def format_js_entry(animal: dict, loc_map: dict) -> str:
     """Format one animal dict as a single-line JS object matching the app format."""
     game_id = animal["game_id"]
+    gid_lower = game_id.lower()
+    loc = loc_map.get(gid_lower, {})
 
-    # Game data is the source of truth for all gameplay fields.
-    # Reference/committed data only fills in fields the game DB doesn't have.
-    name   = camel_to_display(game_id)
+    # Display name: loc file preserves apostrophes, hyphens, etc.
+    name   = loc.get("name") or camel_to_display(game_id)
     app_id = display_to_app_id(name)
     pack   = animal.get("pack", "Unknown")
     exhibit = animal.get("exhibit", False)
     guest   = animal.get("guestWalk", False)
 
-    # Supplement with committed data for fields not in the game DB
-    committed  = lookup_committed(game_id, committed_map)
-    latin      = committed["latin"]      if committed else ""
-    continents = committed["continents"] if committed else []
-    biomes     = committed["biomes"]     if committed else []
-    img        = committed["img"]        if committed else ""
-    # Use committed pack if game couldn't determine it
-    if pack == "Unknown" and committed and committed.get("pack"):
-        pack = committed["pack"]
+    # All these fields come from game files — no committed reference needed.
+    latin = loc.get("latin", "")
+    img   = app_id  # img filename always equals the app id
 
-    # enrichedBy: convert game IDs to display names
+    biomes     = sorted(animal.get("biomes_from_game", []))
+    continents = sorted(animal.get("continents_from_game", []))
+
+    # Barrier: FDB BarrierRequirements first (most packs), loc text fallback (e.g. Content17).
+    bar = animal.get("barrier") or {}
+    if not bar.get("grade") and loc.get("barrier"):
+        bar = loc["barrier"]
+
+    # enrichedBy: convert game IDs to display names using loc data
     raw_enriched   = sorted(animal.get("enrichedBy", []))
-    enriched_names = [game_id_to_display(e, committed_map) for e in raw_enriched]
+    enriched_names = [game_id_to_display(e, loc_map) for e in raw_enriched]
 
     def js_str(s: str) -> str:
         return f'"{s}"' if "'" in s else f"'{s}'"
@@ -398,7 +497,6 @@ def format_js_entry(animal: dict, committed_map: dict) -> str:
     t      = animal.get("terrain", {})
     plants = animal.get("plants", [0, 100])
     land   = animal.get("landMin", 0)
-    bar    = animal.get("barrier", {})
 
     terrain_js = (
         f"{{grassS:{rng(t.get('grassS', [0,100]))},"
@@ -408,7 +506,7 @@ def format_js_entry(animal: dict, committed_map: dict) -> str:
         f"sand:{rng(t.get('sand',   [0,100]))},"
         f"snow:{rng(t.get('snow',   [0,100]))}}}"
     )
-    if bar.get('grade') is not None and bar.get('height') is not None:
+    if bar.get("grade") is not None and bar.get("height") is not None:
         barrier_js = f"{{grade:{bar['grade']},height:{bar['height']}}}"
     else:
         barrier_js = "null"
@@ -426,45 +524,46 @@ def format_js_entry(animal: dict, committed_map: dict) -> str:
 # Main extraction logic
 # ---------------------------------------------------------------------------
 
-def extract_all(cobra_tools: Path, game_dir: Path, extract_root: Path) -> dict:
+def extract_all(cobra_tools: Path, game_dir: Path, extract_root: Path) -> tuple[dict, dict]:
     """
-    Extract FDB files from all content packs and return merged animal data.
+    Extract FDB and localisation files from all content packs.
 
-    Returns dict keyed by game_id with fields:
-      terrain, plants, landMin, barrier, enrichedBy, guestWalk,
-      exhibit, pack, content_pack_raw
+    Returns (animals, loc_map) where:
+      animals  — dict keyed by game_id
+      loc_map  — dict keyed by game_id_lower with {name, latin, barrier}
     """
     content_dirs = find_content_dirs(game_dir)
     print(f"Found {len(content_dirs)} content directories.")
 
-    # Accumulated data across all content packs
-    terrain_map:    dict[str, dict]  = {}
-    habitat_map:    dict[str, dict]  = {}
-    space_map:      dict[str, int]   = {}
-    barrier_map:    dict[str, dict]  = {}
-    guest_walk_set: set[str]         = set()
-    enrichment_map: dict[str, set]   = {}
-    definitions:    dict[str, str]   = {}  # game_id → raw ContentPack value
-    exhibit_set:    set[str]         = set()
+    terrain_map:        dict[str, dict]  = {}
+    habitat_map:        dict[str, dict]  = {}
+    space_map:          dict[str, int]   = {}
+    barrier_map:        dict[str, dict]  = {}
+    guest_walk_set:     set[str]         = set()
+    enrichment_map:     dict[str, set]   = {}
+    definitions:        dict[str, str]   = {}
+    exhibit_set:        set[str]         = set()
+    biome_pref_map:     dict[str, list]  = {}
+    continent_pref_map: dict[str, list]  = {}
+    loc_map:            dict[str, dict]  = {}  # game_id_lower → {name, latin, barrier}
 
     for content_dir in content_dirs:
         ovl_path = content_dir / "Main.ovl"
         if not ovl_path.exists():
             continue
 
-        pack_name = content_dir.name  # e.g. "Content16"
-        out_dir = extract_root / pack_name
+        pack_name = content_dir.name
+        out_dir   = extract_root / pack_name
         print(f"  Extracting {pack_name}/Main.ovl …", end=" ", flush=True)
 
         fdb_files = extract_fdb_files(cobra_tools, ovl_path, out_dir)
-        print(f"{len(fdb_files)} FDB files extracted.")
+        print(f"{len(fdb_files)} FDB files.", end="  ", flush=True)
 
         for fdb in fdb_files:
             fname = fdb.name.lower()
-            conn = open_db(fdb)
+            conn  = open_db(fdb)
             if conn is None:
                 continue
-
             try:
                 if fname.endswith("animals.fdb"):
                     terrain_map.update(query_terrain(conn))
@@ -474,33 +573,44 @@ def extract_all(cobra_tools: Path, game_dir: Path, extract_root: Path) -> dict:
                     for animal, partners in query_enrichment(conn).items():
                         enrichment_map.setdefault(animal, set()).update(partners)
                     definitions.update(query_definitions(conn))
-
+                    biome_pref_map.update(query_biome_prefs(conn))
+                    continent_pref_map.update(query_continent_prefs(conn))
                 elif fname.endswith("zoopedia.fdb"):
                     barrier_map.update(query_barrier(conn))
-
                 elif fname.endswith("exhibits.fdb"):
                     exhibit_set.update(query_exhibits(conn))
                     definitions.update(query_definitions(conn))
-
             finally:
                 conn.close()
+
+        # Extract localisation OVL for display names, latin names, and barrier text.
+        loc_ovl = find_loc_ovl(content_dir)
+        if loc_ovl:
+            loc_dir = out_dir / "loc"
+            print(f"Loc …", end=" ", flush=True)
+            extract_loc_files(cobra_tools, loc_ovl, loc_dir)
+            for gid_lower, data in parse_loc_data(loc_dir).items():
+                loc_map.setdefault(gid_lower, {}).update(data)
+        print()
 
     # Merge into unified animal records
     all_ids = set(terrain_map) | exhibit_set
     animals = {}
 
     for game_id in sorted(all_ids):
-        raw_pack  = definitions.get(game_id, "")
-        pack_name = CONTENT_PACK_NAMES.get(raw_pack, raw_pack or "Unknown")
+        raw_pack   = definitions.get(game_id, "")
+        pack_name  = CONTENT_PACK_NAMES.get(raw_pack, raw_pack or "Unknown")
         is_exhibit = game_id in exhibit_set and game_id not in terrain_map
 
         record: dict = {
-            "game_id":          game_id,
-            "pack":             pack_name,
-            "content_pack_raw": raw_pack,
-            "exhibit":          is_exhibit,
-            "guestWalk":        game_id in guest_walk_set,
-            "enrichedBy":       sorted(enrichment_map.get(game_id, set())),
+            "game_id":              game_id,
+            "pack":                 pack_name,
+            "content_pack_raw":     raw_pack,
+            "exhibit":              is_exhibit,
+            "guestWalk":            game_id in guest_walk_set,
+            "enrichedBy":           sorted(enrichment_map.get(game_id, set())),
+            "biomes_from_game":     sorted(biome_pref_map.get(game_id, [])),
+            "continents_from_game": sorted(continent_pref_map.get(game_id, [])),
         }
 
         if not is_exhibit:
@@ -511,7 +621,7 @@ def extract_all(cobra_tools: Path, game_dir: Path, extract_root: Path) -> dict:
 
         animals[game_id] = record
 
-    return animals
+    return animals, loc_map
 
 
 # ---------------------------------------------------------------------------
@@ -547,10 +657,6 @@ def main():
         "--no-cleanup", action="store_true",
         help="Keep extracted OVL files after the script finishes",
     )
-    parser.add_argument(
-        "--animals-js", default=None, metavar="PATH",
-        help="Path to animals.js for existing animal name lookup (default: animals.js next to this script)",
-    )
     args = parser.parse_args()
 
     cobra_tools = Path(args.cobra_tools).resolve()
@@ -561,16 +667,9 @@ def main():
     if not game_dir.exists():
         sys.exit(f"ERROR: Game directory not found: {game_dir}")
 
-    # Load committed animal data for merging (name, latin, continents, biomes, img)
-    animals_js_src = Path(args.animals_js) if args.animals_js else Path(__file__).parent / "animals.js"
-    committed_map = build_committed_map(animals_js_src)
-    known_count = sum(1 for k in committed_map if "_" in k)  # count app_id keys only
-    print(f"Loaded {known_count} committed animals from {animals_js_src.name}.")
-
-    # Set up extract directory
     tmp_owned = False
     if args.extract_dir:
-        extract_root = Path(args.extract_dir)
+        extract_root = Path(args.extract_dir).resolve()
         extract_root.mkdir(parents=True, exist_ok=True)
     else:
         extract_root = Path(tempfile.mkdtemp(prefix="pz_extract_"))
@@ -580,12 +679,9 @@ def main():
     print()
 
     try:
-        animals = extract_all(cobra_tools, game_dir, extract_root)
+        animals, loc_map = extract_all(cobra_tools, game_dir, extract_root)
     finally:
-        if not args.no_cleanup and tmp_owned:
-            shutil.rmtree(extract_root, ignore_errors=True)
-            print(f"\nCleaned up {extract_root}")
-        elif not args.no_cleanup and not tmp_owned:
+        if not args.no_cleanup:
             shutil.rmtree(extract_root, ignore_errors=True)
             print(f"\nCleaned up {extract_root}")
         else:
@@ -597,7 +693,6 @@ def main():
         for gid, rec in animals.items()
     }
 
-    # Write JSON
     output_path = Path(args.output)
     output_path.write_text(
         json.dumps(json_animals, indent=2, ensure_ascii=False),
@@ -605,60 +700,54 @@ def main():
     )
     print(f"Wrote {len(animals)} animals to {output_path}")
 
-    # Write JS entries — back up existing file first
     js_path = Path(args.js_output)
     if js_path.exists():
         backup_path = js_path.with_suffix(".js.bak")
         shutil.copy2(js_path, backup_path)
         print(f"Backed up {js_path} -> {backup_path}")
+
     habitat_count = sum(1 for a in animals.values() if not a["exhibit"])
-    exhibit_count = sum(1 for a in animals.values() if a["exhibit"])
+    exhibit_count = sum(1 for a in animals.values() if     a["exhibit"])
     lines = [
-        f"// Generated by extract_pz_data.py — do not edit by hand.",
+        "// Generated by extract_pz_data.py — do not edit by hand.",
         f"// {habitat_count} habitat animals, {exhibit_count} exhibit animals",
-        f"// Terrain/barrier/plants/landMin data is authoritative from game files.",
-        f"// latin, continents, biomes, img are preserved from the previous animals.js.",
-        f"// New animals (latin:'') need those fields filled in manually.",
-        f"// Animals with null barrier have unknown requirements — fill from in-game Zoopedia.",
+        "// All data extracted from game files. img filename = animal id.",
         "",
         "const ANIMALS = [",
         "// ===== HABITAT ANIMALS =====",
     ]
     for game_id, rec in sorted(animals.items()):
         if not rec["exhibit"]:
-            lines.append(format_js_entry(rec, committed_map))
+            lines.append(format_js_entry(rec, loc_map))
     lines += ["", "// ===== EXHIBIT ANIMALS ====="]
     for game_id, rec in sorted(animals.items()):
         if rec["exhibit"]:
-            lines.append(format_js_entry(rec, committed_map))
+            lines.append(format_js_entry(rec, loc_map))
     lines.append("];")
 
     js_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
     print(f"Wrote JS entries to {js_path}")
 
-    # Check for committed animals not found in new extraction
-    if committed_map:
-        extracted_app_ids = {
-            display_to_app_id(camel_to_display(gid))
-            for gid in animals
-        }
-        committed_app_ids = {k for k in committed_map if "_" in k or k[0].islower()}
-        not_in_extraction = sorted(committed_app_ids - extracted_app_ids)
-        if not_in_extraction:
-            print(f"\nCommitted animals NOT found in extraction ({len(not_in_extraction)}) — check GAME_ID_TO_COMMITTED_APP_ID:")
-            for aid in not_in_extraction:
-                print(f"  {aid}")
-        else:
-            print(f"\nAll {len(committed_app_ids)} committed animals accounted for in extraction.")
-
-    # Summary
+    # Report animals with no barrier data after both FDB and loc sources
     missing_barrier = [
         gid for gid, rec in animals.items()
-        if not rec["exhibit"] and not rec.get("barrier")
+        if not rec["exhibit"]
+        and not rec.get("barrier")
+        and not loc_map.get(gid.lower(), {}).get("barrier")
     ]
     if missing_barrier:
-        print(f"\nAnimals with no barrier data ({len(missing_barrier)}) — check zoopedia DBs or wiki:")
+        print(f"\nAnimals with no barrier data ({len(missing_barrier)}):")
         for gid in missing_barrier:
+            print(f"  {gid}")
+
+    # Report animals with no latin name
+    missing_latin = [
+        gid for gid in animals
+        if not loc_map.get(gid.lower(), {}).get("latin")
+    ]
+    if missing_latin:
+        print(f"\nAnimals with no latin name ({len(missing_latin)}):")
+        for gid in missing_latin:
             print(f"  {gid}")
 
 
