@@ -2,3 +2,6 @@
 scrapes/
 cobra-tools-master/
 __pycache__/
+animals.js.bak
+extracted_animals.json
+pz_extract_tmp/
