@@ -1,0 +1,7 @@
+Add in predator data and well-defended (can't be predated - Giant Tortoise) - ideally from game data to the extract script.
+There are some other compatibility issues between rhinos and hippos, see matrix here: https://docs.google.com/spreadsheets/d/1Ugol4AaO1l2bjI3-9N743qpZhGmY7LBIDwrsY1Gs2SA/edit?gid=2014232333#gid=2014232333
+Check the game files for indications for this as well, and if there is something then add that info to the extract script.
+Check game files for minimum enclosure size for family group, include that in the data extraction.
+Check game foes for Number of adults in family group, and comfortable temperature min/max and add that to the extraction.
+Check the game files for all the data in this sheet: https://docs.google.com/spreadsheets/d/1Ugol4AaO1l2bjI3-9N743qpZhGmY7LBIDwrsY1Gs2SA/edit?gid=859486841#gid=859486841
+Add to the extraction any of the data that is present in the game files.
