@@ -1,0 +1,604 @@
+# Missing terrain/plant data for 33 animals not yet in the planner
+#
+# For each animal, fill in terrain slider values from the in-game Zoopedia.
+# All values are percentages (0-100).
+# Also fill in guestWalk (true/false) and enrichedBy (comma-separated animal names).
+#
+# Barrier and landMin are pre-filled from the wiki where available.
+# Three animals (marked with ***) had empty wiki pages — fill those in too.
+#
+# Format: [min, max]
+
+[African Leopard]
+id: african_leopard
+latin: Panthera pardus pardus
+pack: Standard
+continents: Africa
+biomes: Grassland, Tropical
+landMin: 705
+barrier: grade 3 / 3m
+guestWalk:
+enrichedBy:
+terrain.grassS: [, ]
+terrain.grassL: [, ]
+terrain.soil:   [, ]
+terrain.rock:   [, ]
+terrain.sand:   [, ]
+terrain.snow:   [, ]
+plants:         [, ]
+
+[African Spurred Tortoise]
+id: african_spurred_tortoise
+latin: Centrochelys sulcata
+pack: Zookeepers Animal Pack
+continents: Africa
+biomes: Desert, Grassland
+landMin: 215
+barrier: grade 1 / 1m
+guestWalk:
+enrichedBy:
+terrain.grassS: [, ]
+terrain.grassL: [, ]
+terrain.soil:   [, ]
+terrain.rock:   [, ]
+terrain.sand:   [, ]
+terrain.snow:   [, ]
+plants:         [, ]
+
+[American Flamingo]
+id: american_flamingo
+latin: Phoenicopterus ruber
+pack: Americas Animal Pack
+continents: North America, South America
+biomes: Aquatic, Grassland, Tropical
+landMin: 300
+barrier: grade 1 / 1m
+guestWalk:
+enrichedBy:
+terrain.grassS: [, ]
+terrain.grassL: [, ]
+terrain.soil:   [, ]
+terrain.rock:   [, ]
+terrain.sand:   [, ]
+terrain.snow:   [, ]
+plants:         [, ]
+
+[Bighorn Sheep]
+id: bighorn_sheep
+latin: Ovis canadensis
+pack: Americas Animal Pack
+continents: North America
+biomes: Desert, Grassland, Taiga
+landMin: 390
+barrier: grade 2 / 1.25m
+guestWalk:
+enrichedBy:
+terrain.grassS: [, ]
+terrain.grassL: [, ]
+terrain.soil:   [, ]
+terrain.rock:   [, ]
+terrain.sand:   [, ]
+terrain.snow:   [, ]
+plants:         [, ]
+
+[Blackbuck]
+id: blackbuck
+latin: Antilope cervicapra
+pack: Asia Animal Pack
+continents: Asia
+biomes: Grassland, Tropical
+landMin: 425
+barrier: grade 2 / 1.25m
+guestWalk:
+enrichedBy:
+terrain.grassS: [, ]
+terrain.grassL: [, ]
+terrain.soil:   [, ]
+terrain.rock:   [, ]
+terrain.sand:   [, ]
+terrain.snow:   [, ]
+plants:         [, ]
+
+[Bornean Elephant]
+id: bornean_elephant
+latin: Elephas maximus borneensis
+pack: Asia Animal Pack
+continents: Asia
+biomes: Aquatic, Grassland, Tropical
+landMin: 882
+barrier: grade 4 / 2m
+guestWalk:
+enrichedBy:
+terrain.grassS: [, ]
+terrain.grassL: [, ]
+terrain.soil:   [, ]
+terrain.rock:   [, ]
+terrain.sand:   [, ]
+terrain.snow:   [, ]
+plants:         [, ]
+
+[Brown-Throated Sloth]  *** wiki page has no landMin or barrier data
+id: brown_throated_sloth
+latin: Bradypus variegatus
+pack: Tropical Pack
+continents: South America
+biomes: Tropical
+landMin:
+barrier: grade  /  m
+guestWalk:
+enrichedBy:
+terrain.grassS: [, ]
+terrain.grassL: [, ]
+terrain.soil:   [, ]
+terrain.rock:   [, ]
+terrain.sand:   [, ]
+terrain.snow:   [, ]
+plants:         [, ]
+
+[Bush Dog]
+id: bush_dog
+latin: Speothos venaticus
+pack: Americas Animal Pack
+continents: South America
+biomes: Aquatic, Tropical, Grassland
+landMin: 500
+barrier: grade 2 / 1.25m
+guestWalk:
+enrichedBy:
+terrain.grassS: [, ]
+terrain.grassL: [, ]
+terrain.soil:   [, ]
+terrain.rock:   [, ]
+terrain.sand:   [, ]
+terrain.snow:   [, ]
+plants:         [, ]
+
+[Collared Peccary]
+id: collared_peccary
+latin: Dicotyles tajacu
+pack: Standard
+continents: North America, South America
+biomes: Desert, Grassland, Temperate, Tropical
+landMin: 300
+barrier: grade 2 / 1.25m
+guestWalk:
+enrichedBy:
+terrain.grassS: [, ]
+terrain.grassL: [, ]
+terrain.soil:   [, ]
+terrain.rock:   [, ]
+terrain.sand:   [, ]
+terrain.snow:   [, ]
+plants:         [, ]
+
+[Coquerel's Sifaka]
+id: coquerels_sifaka
+latin: Propithecus coquereli
+pack: Zookeepers Animal Pack
+continents: Africa
+biomes: Tropical
+landMin: 215
+barrier: grade 2 / 3m
+guestWalk:
+enrichedBy:
+terrain.grassS: [, ]
+terrain.grassL: [, ]
+terrain.soil:   [, ]
+terrain.rock:   [, ]
+terrain.sand:   [, ]
+terrain.snow:   [, ]
+plants:         [, ]
+
+[Coyote]
+id: coyote
+latin: Canis latrans
+pack: Americas Animal Pack
+continents: North America
+biomes: Desert, Grassland, Temperate
+landMin: 920
+barrier: grade 2 / 3m
+guestWalk:
+enrichedBy:
+terrain.grassS: [, ]
+terrain.grassL: [, ]
+terrain.soil:   [, ]
+terrain.rock:   [, ]
+terrain.sand:   [, ]
+terrain.snow:   [, ]
+plants:         [, ]
+
+[European Peacock]  *** wiki page has no landMin or barrier data
+id: european_peacock
+latin: Aglais io
+pack: Grasslands Animal Pack
+continents: Asia, Europe
+biomes: Grassland, Temperate
+landMin:
+barrier: grade  /  m
+guestWalk:
+enrichedBy:
+terrain.grassS: [, ]
+terrain.grassL: [, ]
+terrain.soil:   [, ]
+terrain.rock:   [, ]
+terrain.sand:   [, ]
+terrain.snow:   [, ]
+plants:         [, ]
+
+[Greater Rhea]
+id: greater_rhea
+latin: Rhea americana
+pack: Americas Animal Pack
+continents: South America
+biomes: Grassland, Temperate
+landMin: 660
+barrier: grade 2 / 1.25m
+guestWalk:
+enrichedBy:
+terrain.grassS: [, ]
+terrain.grassL: [, ]
+terrain.soil:   [, ]
+terrain.rock:   [, ]
+terrain.sand:   [, ]
+terrain.snow:   [, ]
+plants:         [, ]
+
+[Hamadryas Baboon]
+id: hamadryas_baboon
+latin: Papio hamadryas
+pack: Zookeepers Animal Pack
+continents: Africa
+biomes: Desert, Grassland
+landMin: 500
+barrier: grade 4 / 3m
+guestWalk:
+enrichedBy:
+terrain.grassS: [, ]
+terrain.grassL: [, ]
+terrain.soil:   [, ]
+terrain.rock:   [, ]
+terrain.sand:   [, ]
+terrain.snow:   [, ]
+plants:         [, ]
+
+[Hermann's Tortoise]  *** wiki page has no landMin or barrier data
+id: hermanns_tortoise
+latin: Testudo hermanni
+pack: Eurasia Animal Pack
+continents: Europe
+biomes: Grassland, Temperate
+landMin:
+barrier: grade  /  m
+guestWalk:
+enrichedBy:
+terrain.grassS: [, ]
+terrain.grassL: [, ]
+terrain.soil:   [, ]
+terrain.rock:   [, ]
+terrain.sand:   [, ]
+terrain.snow:   [, ]
+plants:         [, ]
+
+[Honey Badger]
+id: honey_badger
+latin: Mellivora capensis
+pack: Asia Animal Pack
+continents: Africa, Asia
+biomes: Desert, Grassland, Tropical
+landMin: 575
+barrier: grade 3 / 2m
+guestWalk:
+enrichedBy:
+terrain.grassS: [, ]
+terrain.grassL: [, ]
+terrain.soil:   [, ]
+terrain.rock:   [, ]
+terrain.sand:   [, ]
+terrain.snow:   [, ]
+plants:         [, ]
+
+[Japanese Raccoon Dog]
+id: japanese_raccoon_dog
+latin: Nyctereutes viverrinus
+pack: Asia Animal Pack
+continents: Asia
+biomes: Temperate
+landMin: 210
+barrier: grade 2 / 3m
+guestWalk:
+enrichedBy:
+terrain.grassS: [, ]
+terrain.grassL: [, ]
+terrain.soil:   [, ]
+terrain.rock:   [, ]
+terrain.sand:   [, ]
+terrain.snow:   [, ]
+plants:         [, ]
+
+[Kirk's Dik-Dik]
+id: kirks_dik_dik
+latin: Madoqua kirkii
+pack: Zookeepers Animal Pack
+continents: Africa
+biomes: Grassland
+landMin: 200
+barrier: grade 2 / 1.25m
+guestWalk:
+enrichedBy:
+terrain.grassS: [, ]
+terrain.grassL: [, ]
+terrain.soil:   [, ]
+terrain.rock:   [, ]
+terrain.sand:   [, ]
+terrain.snow:   [, ]
+plants:         [, ]
+
+[Lion-Tailed Macaque]
+id: lion_tailed_macaque
+latin: Macaca silenus
+pack: Asia Animal Pack
+continents: Asia
+biomes: Tropical
+landMin: 400
+barrier: grade 2 / 3m
+guestWalk:
+enrichedBy:
+terrain.grassS: [, ]
+terrain.grassL: [, ]
+terrain.soil:   [, ]
+terrain.rock:   [, ]
+terrain.sand:   [, ]
+terrain.snow:   [, ]
+plants:         [, ]
+
+[Markhor]
+id: markhor
+latin: Capra falconeri
+pack: Zookeepers Animal Pack
+continents: Asia
+biomes: Tundra, Taiga
+landMin: 390
+barrier: grade 3 / 1.25m
+guestWalk:
+enrichedBy:
+terrain.grassS: [, ]
+terrain.grassL: [, ]
+terrain.soil:   [, ]
+terrain.rock:   [, ]
+terrain.sand:   [, ]
+terrain.snow:   [, ]
+plants:         [, ]
+
+[Mute Swan]
+id: mute_swan
+latin: Cygnus olor
+pack: Eurasia Animal Pack
+continents: Asia, Europe
+biomes: Aquatic, Temperate
+landMin: 300
+barrier: grade 1 / 1.25m
+guestWalk:
+enrichedBy:
+terrain.grassS: [, ]
+terrain.grassL: [, ]
+terrain.soil:   [, ]
+terrain.rock:   [, ]
+terrain.sand:   [, ]
+terrain.snow:   [, ]
+plants:         [, ]
+
+[Nilgai]
+id: nilgai
+latin: Boselaphus tragocamelus
+pack: Asia Animal Pack
+continents: Asia
+biomes: Tropical, Grassland
+landMin: 450
+barrier: grade 3 / 1.25m
+guestWalk:
+enrichedBy:
+terrain.grassS: [, ]
+terrain.grassL: [, ]
+terrain.soil:   [, ]
+terrain.rock:   [, ]
+terrain.sand:   [, ]
+terrain.snow:   [, ]
+plants:         [, ]
+
+[Ocelot]
+id: ocelot
+latin: Leopardus pardalis
+pack: Americas Animal Pack
+continents: North America, South America
+biomes: Tropical, Grassland, Desert
+landMin: 534
+barrier: grade 2 / 3m
+guestWalk:
+enrichedBy:
+terrain.grassS: [, ]
+terrain.grassL: [, ]
+terrain.soil:   [, ]
+terrain.rock:   [, ]
+terrain.sand:   [, ]
+terrain.snow:   [, ]
+plants:         [, ]
+
+[Pallas's Cat]
+id: pallass_cat
+latin: Otocolobus manul
+pack: Zookeepers Animal Pack
+continents: Asia
+biomes: Taiga, Tundra, Temperate
+landMin: 200
+barrier: grade 2 / 3m
+guestWalk:
+enrichedBy:
+terrain.grassS: [, ]
+terrain.grassL: [, ]
+terrain.soil:   [, ]
+terrain.rock:   [, ]
+terrain.sand:   [, ]
+terrain.snow:   [, ]
+plants:         [, ]
+
+[Père David's Deer]
+id: pere_davids_deer
+latin: Elaphurus davidianus
+pack: Asia Animal Pack
+continents: Asia
+biomes: Aquatic, Temperate
+landMin: 360
+barrier: grade 2 / 1.25m
+guestWalk:
+enrichedBy:
+terrain.grassS: [, ]
+terrain.grassL: [, ]
+terrain.soil:   [, ]
+terrain.rock:   [, ]
+terrain.sand:   [, ]
+terrain.snow:   [, ]
+plants:         [, ]
+
+[Saiga]
+id: saiga
+latin: Saiga tatarica
+pack: Eurasia Animal Pack
+continents: Asia
+biomes: Desert, Grassland
+landMin: 425
+barrier: grade 2 / 1.25m
+guestWalk:
+enrichedBy:
+terrain.grassS: [, ]
+terrain.grassL: [, ]
+terrain.soil:   [, ]
+terrain.rock:   [, ]
+terrain.sand:   [, ]
+terrain.snow:   [, ]
+plants:         [, ]
+
+[Sloth Bear]
+id: sloth_bear
+latin: Melursus ursinus
+pack: Eurasia Animal Pack
+continents: Asia
+biomes: Grassland, Temperate, Tropical
+landMin: 850
+barrier: grade 4 / 3m
+guestWalk:
+enrichedBy:
+terrain.grassS: [, ]
+terrain.grassL: [, ]
+terrain.soil:   [, ]
+terrain.rock:   [, ]
+terrain.sand:   [, ]
+terrain.snow:   [, ]
+plants:         [, ]
+
+[Spectacled Bear]
+id: spectacled_bear
+latin: Tremarctos ornatus
+pack: Zookeepers Animal Pack
+continents: South America
+biomes: Tropical, Tundra, Grassland, Taiga
+landMin: 850
+barrier: grade 4 / 3m
+guestWalk:
+enrichedBy:
+terrain.grassS: [, ]
+terrain.grassL: [, ]
+terrain.soil:   [, ]
+terrain.rock:   [, ]
+terrain.sand:   [, ]
+terrain.snow:   [, ]
+plants:         [, ]
+
+[Takin]
+id: takin
+latin: Budorcas taxicolor
+pack: Eurasia Animal Pack
+continents: Asia
+biomes: Taiga, Temperate
+landMin: 390
+barrier: grade 3 / 1.25m
+guestWalk:
+enrichedBy:
+terrain.grassS: [, ]
+terrain.grassL: [, ]
+terrain.soil:   [, ]
+terrain.rock:   [, ]
+terrain.sand:   [, ]
+terrain.snow:   [, ]
+plants:         [, ]
+
+[White-Faced Saki]
+id: white_faced_saki
+latin: Pithecia pithecia
+pack: Americas Animal Pack
+continents: South America
+biomes: Tropical
+landMin: 210
+barrier: grade 1 / 3m
+guestWalk:
+enrichedBy:
+terrain.grassS: [, ]
+terrain.grassL: [, ]
+terrain.soil:   [, ]
+terrain.rock:   [, ]
+terrain.sand:   [, ]
+terrain.snow:   [, ]
+plants:         [, ]
+
+[Wild Boar]
+id: wild_boar
+latin: Sus scrofa
+pack: Eurasia Animal Pack
+continents: Africa, Asia, Europe
+biomes: Grassland, Temperate, Desert, Taiga, Tropical
+landMin: 310
+barrier: grade 3 / 1.25m
+guestWalk:
+enrichedBy:
+terrain.grassS: [, ]
+terrain.grassL: [, ]
+terrain.soil:   [, ]
+terrain.rock:   [, ]
+terrain.sand:   [, ]
+terrain.snow:   [, ]
+plants:         [, ]
+
+[Wisent]
+id: wisent
+latin: Bison bonasus
+pack: Eurasia Animal Pack
+continents: Europe
+biomes: Grassland, Taiga, Temperate
+landMin: 420
+barrier: grade 3 / 1.25m
+guestWalk:
+enrichedBy:
+terrain.grassS: [, ]
+terrain.grassL: [, ]
+terrain.soil:   [, ]
+terrain.rock:   [, ]
+terrain.sand:   [, ]
+terrain.snow:   [, ]
+plants:         [, ]
+
+[Wolverine]
+id: wolverine
+latin: Gulo gulo
+pack: Eurasia Animal Pack
+continents: Asia, Europe, North America
+biomes: Tundra, Taiga
+landMin: 574
+barrier: grade 3 / 3m
+guestWalk:
+enrichedBy:
+terrain.grassS: [, ]
+terrain.grassL: [, ]
+terrain.soil:   [, ]
+terrain.rock:   [, ]
+terrain.sand:   [, ]
+terrain.snow:   [, ]
+plants:         [, ]
