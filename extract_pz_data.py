@@ -408,7 +408,10 @@ def format_js_entry(animal: dict, committed_map: dict) -> str:
         f"sand:{rng(t.get('sand',   [0,100]))},"
         f"snow:{rng(t.get('snow',   [0,100]))}}}"
     )
-    barrier_js = f"{{grade:{bar.get('grade','?')},height:{bar.get('height','?')}}}"
+    if bar.get('grade') is not None and bar.get('height') is not None:
+        barrier_js = f"{{grade:{bar['grade']},height:{bar['height']}}}"
+    else:
+        barrier_js = "null"
 
     return (
         f"  {{id:'{app_id}',name:{js_str(name)},latin:'{latin}',"
@@ -616,8 +619,9 @@ def main():
         f"// Terrain/barrier/plants/landMin data is authoritative from game files.",
         f"// latin, continents, biomes, img are preserved from the previous animals.js.",
         f"// New animals (latin:'') need those fields filled in manually.",
-        f"// Missing barrier data is shown as grade:? height:? — fill from in-game Zoopedia.",
+        f"// Animals with null barrier have unknown requirements — fill from in-game Zoopedia.",
         "",
+        "const ANIMALS = [",
         "// ===== HABITAT ANIMALS =====",
     ]
     for game_id, rec in sorted(animals.items()):
@@ -627,6 +631,7 @@ def main():
     for game_id, rec in sorted(animals.items()):
         if rec["exhibit"]:
             lines.append(format_js_entry(rec, committed_map))
+    lines.append("];")
 
     js_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
     print(f"Wrote JS entries to {js_path}")
