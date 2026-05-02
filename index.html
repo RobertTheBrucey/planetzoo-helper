@@ -709,17 +709,24 @@
     align-items: flex-start;
   }
 
-  .guest-walkthrough-badge {
+  .interactable-badge, .walkable-badge {
     display: inline-flex;
     align-items: center;
     gap: 4px;
     padding: 2px 8px;
     border-radius: 3px;
     font-size: 0.68rem;
+    font-family: 'Cinzel', serif;
+  }
+  .interactable-badge {
     background: rgba(155,108,217,0.15);
     border: 1px solid rgba(155,108,217,0.3);
     color: #c49de0;
-    font-family: 'Cinzel', serif;
+  }
+  .walkable-badge {
+    background: rgba(30,160,130,0.15);
+    border: 1px solid rgba(30,160,130,0.3);
+    color: #50c8a8;
   }
 
   /* Terrain & plant bars */
@@ -812,6 +819,7 @@
   .tc-burrow   { background: rgba(140,90,40,0.2);   border: 1px solid rgba(140,90,40,0.4);   color: #c08050; }
   .tc-aggr     { background: rgba(200,120,20,0.15); border: 1px solid rgba(200,120,20,0.35); color: #d09030; }
   .tc-interact { background: rgba(155,108,217,0.15);border: 1px solid rgba(155,108,217,0.3); color: #c49de0; }
+  .tc-walk     { background: rgba(30,160,130,0.15); border: 1px solid rgba(30,160,130,0.3);  color: #50c8a8; }
 
   /* Habitat size table in enclosure panel */
   .size-table { width: 100%; font-size: 0.8rem; margin-top: 6px; border-collapse: collapse; }
@@ -1271,7 +1279,8 @@ function passesFilters(animal) {
   }
   if (activeTraits.size) {
     const checks = {
-      interactable: () => !!animal.guestWalk,
+      interactable: () => !!animal.interactable,
+      walkable:     () => !!animal.walkable,
       climber:      () => !!animal.climber,
       swimmer:      () => !!animal.canSwim,
       deepDiver:    () => !!animal.deepDiver,
@@ -1362,7 +1371,7 @@ function renderFilters() {
 
   // Traits
   const TRAIT_DEFS = [
-    ['interactable','Interactable'],['climber','Climber'],['swimmer','Swimmer'],
+    ['walkable','Walkable'],['interactable','Interactable'],['climber','Climber'],['swimmer','Swimmer'],
     ['deepDiver','Deep Diver'],['burrower','Burrower'],['predator','Predator'],
     ['prey','Prey'],['passive','Passive'],['aggressive','Aggressive'],
   ];
@@ -1427,7 +1436,8 @@ function renderAnimalList() {
       animal.deepDiver      ? '<span class="tc tc-dive">Dive</span>'    : '',
       animal.burrower       ? '<span class="tc tc-burrow">Burrow</span>': '',
       animal.temperament === 'Aggressive' ? '<span class="tc tc-aggr">Aggr</span>' : '',
-      animal.guestWalk      ? '<span class="tc tc-interact">Interact</span>' : '',
+      animal.walkable       ? '<span class="tc tc-walk">Walk</span>'      : '',
+      animal.interactable   ? '<span class="tc tc-interact">Interact</span>' : '',
     ].filter(Boolean).join('');
     return `
       <div class="animal-item ${isSelected?'selected':''} ${incompatCls} ${exhibitCls}" data-id="${animal.id}" title="${animal.exhibit?'Exhibit animal':''}">
@@ -1491,8 +1501,10 @@ function renderRightPanel() {
     if (noBiomeOverlap.length) warnings.push(`Biome mismatch: ${noBiomeOverlap.map(a=>a.name).join(', ')}`);
   }
 
-  const guestWalkAll = sel.every(a => a.guestWalk);
-  const guestWalkSome = sel.some(a => a.guestWalk);
+  const walkableAll  = sel.every(a => a.walkable);
+  const walkableSome = sel.some(a => a.walkable);
+  const interactableAll  = sel.every(a => a.interactable);
+  const interactableSome = sel.some(a => a.interactable);
 
   panel.innerHTML = `
     <div class="panel-title">Habitat Requirements <span style="font-size:0.8rem;font-weight:400;color:var(--text-dim)">(${sel.length} animal${sel.length!==1?'s':''})</span></div>
@@ -1519,10 +1531,18 @@ function renderRightPanel() {
         </div>
       </div>
       <div class="req-card">
-        <div class="req-card-title">Guest Interactable</div>
+        <div class="req-card-title">Guests Can Enter</div>
         <div class="req-badges">
-          ${guestWalkAll ? '<span class="req-badge compatible">✓ All animals interactable</span>'
-            : guestWalkSome ? '<span class="req-badge warn">⚡ Some animals interactable</span>'
+          ${walkableAll ? '<span class="req-badge compatible">✓ All habitats walkable</span>'
+            : walkableSome ? '<span class="req-badge warn">⚡ Some habitats walkable</span>'
+            : '<span class="req-badge" style="background:rgba(80,80,80,0.2);border:1px solid rgba(120,120,120,0.3);color:var(--text-dim)">✗ Not walkable</span>'}
+        </div>
+      </div>
+      <div class="req-card">
+        <div class="req-card-title">Animal Encounters</div>
+        <div class="req-badges">
+          ${interactableAll ? '<span class="req-badge compatible">✓ All animals interactable</span>'
+            : interactableSome ? '<span class="req-badge warn">⚡ Some animals interactable</span>'
             : '<span class="req-badge" style="background:rgba(80,80,80,0.2);border:1px solid rgba(120,120,120,0.3);color:var(--text-dim)">✗ Not interactable</span>'}
         </div>
       </div>
@@ -1562,7 +1582,8 @@ function renderRightPanel() {
             <div class="habitat-chips">
               ${animal.continents.map(c => `<span class="habitat-chip hc-continent">${c}</span>`).join('')}
               ${animal.biomes.map(b => `<span class="habitat-chip hc-biome">${b}</span>`).join('')}
-              ${animal.guestWalk ? '<span class="guest-walkthrough-badge">✋ Interactable</span>' : ''}
+              ${animal.walkable     ? '<span class="walkable-badge">🚶 Walkable</span>'       : ''}
+              ${animal.interactable ? '<span class="interactable-badge">✋ Interactable</span>' : ''}
             </div>
           </div>
           <button class="remove-btn" data-remove="${animal.id}" title="Remove">✕</button>
@@ -1720,7 +1741,8 @@ function renderSelectedPanel() {
           animal.deepDiver    ? '<span class="tc tc-dive">Deep Diver</span>' : '',
           animal.burrower     ? '<span class="tc tc-burrow">Burrower</span>' : '',
           animal.temperament === 'Aggressive' ? '<span class="tc tc-aggr">Aggressive</span>' : '',
-          animal.guestWalk    ? '<span class="tc tc-interact">Interactable</span>' : '',
+          animal.walkable     ? '<span class="tc tc-walk">Walkable</span>'     : '',
+          animal.interactable ? '<span class="tc tc-interact">Interactable</span>' : '',
         ].filter(Boolean).join('');
         return `
         <div class="selected-animal-card">
@@ -1779,8 +1801,10 @@ function renderEnclosurePanel() {
     if (noBiomeOverlap.length) warnings.push(`Biome mismatch: ${noBiomeOverlap.map(a=>a.name).join(', ')}`);
   }
 
-  const guestWalkAll = sel.every(a => a.guestWalk);
-  const guestWalkSome = sel.some(a => a.guestWalk);
+  const walkableAll  = sel.every(a => a.walkable);
+  const walkableSome = sel.some(a => a.walkable);
+  const interactableAll  = sel.every(a => a.interactable);
+  const interactableSome = sel.some(a => a.interactable);
   const predWarnings = getPredatorWarnings(sel);
 
   panel.innerHTML = `
@@ -1809,10 +1833,18 @@ function renderEnclosurePanel() {
         </div>
       </div>
       <div class="req-card">
-        <div class="req-card-title">Guest Interactable</div>
+        <div class="req-card-title">Guests Can Enter</div>
         <div class="req-badges">
-          ${guestWalkAll ? '<span class="req-badge compatible">✓ All animals interactable</span>'
-            : guestWalkSome ? '<span class="req-badge warn">⚡ Some animals interactable</span>'
+          ${walkableAll ? '<span class="req-badge compatible">✓ All habitats walkable</span>'
+            : walkableSome ? '<span class="req-badge warn">⚡ Some habitats walkable</span>'
+            : '<span class="req-badge" style="background:rgba(80,80,80,0.2);border:1px solid rgba(120,120,120,0.3);color:var(--text-dim)">✗ Not walkable</span>'}
+        </div>
+      </div>
+      <div class="req-card">
+        <div class="req-card-title">Animal Encounters</div>
+        <div class="req-badges">
+          ${interactableAll ? '<span class="req-badge compatible">✓ All animals interactable</span>'
+            : interactableSome ? '<span class="req-badge warn">⚡ Some animals interactable</span>'
             : '<span class="req-badge" style="background:rgba(80,80,80,0.2);border:1px solid rgba(120,120,120,0.3);color:var(--text-dim)">✗ Not interactable</span>'}
         </div>
       </div>
