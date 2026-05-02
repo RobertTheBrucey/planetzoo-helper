@@ -295,6 +295,35 @@ def table_exists(conn: sqlite3.Connection, name: str) -> bool:
     return row is not None
 
 
+def discover_fdb_schema(fdb_path: Path, filter_keywords: list[str] | None = None) -> None:
+    """
+    Print all table names and columns in an FDB file.
+    If filter_keywords provided, only print tables/columns whose name contains any keyword (case-insensitive).
+    """
+    conn = open_db(fdb_path)
+    if conn is None:
+        return
+    try:
+        tables = [row[0] for row in conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name"
+        )]
+        for tbl in tables:
+            cols = [row[1] for row in conn.execute(f"PRAGMA table_info({tbl})")]
+            if filter_keywords:
+                kw = [k.lower() for k in filter_keywords]
+                tbl_match = any(k in tbl.lower() for k in kw)
+                col_matches = [c for c in cols if any(k in c.lower() for k in kw)]
+                if not tbl_match and not col_matches:
+                    continue
+                highlight = set(col_matches)
+                col_str = ", ".join(f"[{c}]" if c in highlight else c for c in cols)
+            else:
+                col_str = ", ".join(cols)
+            print(f"  {tbl}: {col_str}")
+    finally:
+        conn.close()
+
+
 def get_table_columns(conn: sqlite3.Connection, table_name: str) -> set:
     """Return set of column names for a table (empty set if table does not exist)."""
     if not table_exists(conn, table_name):
@@ -622,10 +651,10 @@ def query_fertility(conn: sqlite3.Connection) -> dict:
         animal = d["AnimalType"]
         entry: dict = {}
         for col, key, fn in [
-            ("MinLitterSize",  "minLitterSize",  lambda v: int(v)),
-            ("MaxLitterSize",  "maxLitterSize",  lambda v: int(v)),
-            ("GestationTime",  "gestationTime",  lambda v: int(round(v))),
-            ("InterBirthTime", "interBirthTime", lambda v: int(round(v))),
+            ("MinLitterSize",     "minLitterSize",  lambda v: int(v)),
+            ("MaxLitterSize",     "maxLitterSize",  lambda v: int(v)),
+            ("GestationTime",     "gestationTime",  lambda v: int(round(v))),
+            ("InterBirthTime",    "interBirthTime", lambda v: int(round(v))),
         ]:
             if col in cols and d.get(col) is not None:
                 entry[key] = fn(d[col])
@@ -731,7 +760,7 @@ def query_behaviors(conn: sqlite3.Connection) -> dict:
         "AnimalType", "ActionWeightClimbing", "ActionWeightInWater",
         "ActionWeightDeepSwim", "ActionWeightInBurrow",
     }
-    unknown = cols - _known_behavior_cols
+    unknown = False #cols - _known_behavior_cols
     if unknown:
         print(f"  NOTE: IdleBehaviourWeights extra columns: {sorted(unknown)}")
 
@@ -768,7 +797,7 @@ def query_sleep_pattern(conn: sqlite3.Connection) -> dict:
     if not table_exists(conn, "SleepVariables"):
         return {}
     cols = get_table_columns(conn, "SleepVariables")
-    print(f"  NOTE: SleepVariables columns: {sorted(cols)}")
+    #print(f"  NOTE: SleepVariables columns: {sorted(cols)}")
 
     # Find the AnimalType column (always present under one of these names).
     type_col = next((c for c in ("AnimalType", "Species", "Animal") if c in cols), None)
@@ -786,6 +815,7 @@ def query_sleep_pattern(conn: sqlite3.Connection) -> dict:
     )
     if pattern_col is None:
         # Print a sample row so the user can see what's available.
+        return {}
         try:
             row = conn.execute(f"SELECT * FROM SleepVariables LIMIT 1").fetchone()
             if row:
@@ -799,6 +829,33 @@ def query_sleep_pattern(conn: sqlite3.Connection) -> dict:
         val = row[1]
         if val:
             out[row[0]] = str(val)
+    return out
+
+
+def query_maturity_age(conn: sqlite3.Connection) -> dict:
+    """
+    LongevityData → FullMaturityAge (in game days) per animal.
+
+    FullMaturityAge is the age at which a juvenile becomes an adult — i.e. when they
+    leave the juvenile life stage and begin breeding. Same time-unit as GestationTime
+    and InterBirthTime (game days). Used to compute concurrent litter cohort overlap.
+
+    FightAgeThresholds.AdultMaturity was tried first but is a proportional value
+    (~% of lifespan), not game days — unsuitable for direct comparison with the
+    breeding cycle.
+    """
+    if not table_exists(conn, "LongevityData"):
+        return {}
+    cols = get_table_columns(conn, "LongevityData")
+    if "AnimalType" not in cols or "FullMaturityAge" not in cols:
+        return {}
+    # FullMaturityAge is in in-game years; GestationTime/InterBirthTime are in game days.
+    # 1 game year = 12 months × 90 game days/month = 1,080 game days.
+    GAME_DAYS_PER_YEAR = 1080
+    out = {}
+    for row in conn.execute("SELECT AnimalType, FullMaturityAge FROM LongevityData"):
+        if row[1] is not None:
+            out[row[0]] = {"maturityTime": int(round(row[1] * GAME_DAYS_PER_YEAR))}
     return out
 
 
@@ -980,6 +1037,7 @@ def format_js_entry(animal: dict, loc_map: dict) -> str:
     max_litter    = animal.get("maxLitterSize")
     gestation     = animal.get("gestationTime")
     inter_birth   = animal.get("interBirthTime")
+    maturity      = animal.get("maturityTime")
     max_m_single  = animal.get("maxMalesSingle")
     max_f_single  = animal.get("maxFemalesSingle")
     max_m_both    = animal.get("maxMalesBoth")
@@ -1025,6 +1083,7 @@ def format_js_entry(animal: dict, loc_map: dict) -> str:
         f"adultsMin:{js_opt_num(adults_min)},adultsMax:{js_opt_num(adults_max)},"
         f"minLitterSize:{js_opt_num(min_litter)},maxLitterSize:{js_opt_num(max_litter)},"
         f"gestationTime:{js_opt_num(gestation)},interBirthTime:{js_opt_num(inter_birth)},"
+        f"maturityTime:{js_opt_num(maturity)},"
         f"maxMalesSingle:{js_opt_num(max_m_single)},maxFemalesSingle:{js_opt_num(max_f_single)},"
         f"maxMalesBoth:{js_opt_num(max_m_both)},maxFemalesBoth:{js_opt_num(max_f_both)},"
         f"isPredator:{tf(is_pred)},wellDefended:{tf(well_defended)},"
@@ -1062,6 +1121,7 @@ def extract_all(cobra_tools: Path, game_dir: Path, extract_root: Path) -> tuple[
     continent_pref_map:  dict[str, list]  = {}
     population_map:      dict[str, dict]  = {}  # adultsMin/adultsMax
     fertility_map:       dict[str, dict]  = {}  # minLitterSize/maxLitterSize/gestationTime/interBirthTime
+    maturity_map:        dict[str, dict]  = {}  # maturityTime (AdultMaturity from FightAgeThresholds)
     gender_ratio_map:    dict[str, dict]  = {}  # maxMales/FemalesSingle/Both
     interspecies_map:    dict[str, dict]  = {}  # per-animal predation profile
     behavior_map:        dict[str, dict]  = {}  # climber/canSwim/deepDiver/burrower
@@ -1102,6 +1162,12 @@ def extract_all(cobra_tools: Path, game_dir: Path, extract_root: Path) -> tuple[
                         population_map.setdefault(animal, {}).update(data)
                     for animal, data in query_fertility(conn).items():
                         fertility_map[animal] = data
+                    _mat = query_maturity_age(conn)
+                    for animal, data in _mat.items():
+                        maturity_map.setdefault(animal, {}).update(data)
+                    if _mat:
+                        sample = next(iter(_mat.items()))
+                        print(f"  maturityTime sample — {sample[0]}: {sample[1]['maturityTime']} game days")
                     for animal, data in query_gender_ratios(conn).items():
                         gender_ratio_map[animal] = data
                     for animal, profile in query_predation_profile(conn).items():
@@ -1160,6 +1226,7 @@ def extract_all(cobra_tools: Path, game_dir: Path, extract_root: Path) -> tuple[
             habitat_data  = habitat_map.get(game_id, {})
             pop_data      = population_map.get(game_id, {})
             fertility_data = fertility_map.get(game_id, {})
+            maturity_data  = maturity_map.get(game_id, {})
             gender_data   = gender_ratio_map.get(game_id, {})
             beh_data      = behavior_map.get(game_id, {})
             pred_data     = interspecies_map.get(game_id, {})
@@ -1207,6 +1274,7 @@ def extract_all(cobra_tools: Path, game_dir: Path, extract_root: Path) -> tuple[
             record["maxLitterSize"]        = max_litter
             record["gestationTime"]        = fertility_data.get("gestationTime")
             record["interBirthTime"]       = fertility_data.get("interBirthTime")
+            record["maturityTime"]         = maturity_data.get("maturityTime")
             # Group composition (from DesiredGenderRatios)
             record["maxMalesSingle"]       = gender_data.get("maxMalesSingle")
             record["maxFemalesSingle"]     = gender_data.get("maxFemalesSingle")
@@ -1274,6 +1342,10 @@ def main():
         "--no-cleanup", action="store_true",
         help="Keep extracted OVL files after the script finishes",
     )
+    parser.add_argument(
+        "--discover", action="store_true",
+        help="Dump all FDB table/column names (filtered for age/maturity keywords) to discover schema",
+    )
     args = parser.parse_args()
 
     cobra_tools = Path(args.cobra_tools).resolve()
@@ -1294,6 +1366,29 @@ def main():
 
     print(f"Extracting OVL files to: {extract_root}")
     print()
+
+    if args.discover:
+        # Dump FDB schemas, highlighting columns related to age/maturity/lifecycle.
+        # Use --no-cleanup with this flag to keep the extracted files for inspection.
+        MATURITY_KEYWORDS = ["age", "matur", "life", "stage", "juvenile", "breed", "fertil", "birth", "gestat"]
+        try:
+            content_dirs = find_content_dirs(game_dir)
+            for content_dir in content_dirs:
+                ovl_path = content_dir / "Main.ovl"
+                if not ovl_path.exists():
+                    continue
+                out_dir = extract_root / content_dir.name
+                fdb_files = extract_fdb_files(cobra_tools, ovl_path, out_dir)
+                for fdb in fdb_files:
+                    if not fdb.name.lower().endswith("animals.fdb"):
+                        continue
+                    print(f"\n=== {content_dir.name}/{fdb.name} ===")
+                    discover_fdb_schema(fdb, filter_keywords=MATURITY_KEYWORDS)
+                    break  # one animals.fdb per pack is enough
+        finally:
+            if not args.no_cleanup:
+                shutil.rmtree(extract_root, ignore_errors=True)
+        return
 
     try:
         animals, loc_map = extract_all(cobra_tools, game_dir, extract_root)
@@ -1346,7 +1441,7 @@ def main():
     print(f"Wrote JS entries to {js_path}")
 
     # Report unknown zoopedia loc prefixes — helps discover sleeping pattern / attitude field names.
-    if _unknown_zoopedia_prefixes:
+    if False:#_unknown_zoopedia_prefixes:
         print(f"\nUnknown zoopedia loc prefixes found ({len(_unknown_zoopedia_prefixes)}):")
         for p in sorted(_unknown_zoopedia_prefixes):
             print(f"  {p}")
