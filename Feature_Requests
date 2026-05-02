@@ -1,0 +1,6 @@
+Change the font to a serif font that has small serifs.
+Output this info too:
+Attitude	Guests can enter	Animal Encounters	Approx. appeal ◊	Cost to feed per year (G1)	SCORE for cost to appeal ratio *	Climber	Can swim	Deep diver	Burrower	Interspecies bonus Δ	Interaction with other animals	Sleeping pattern
+
+Walkable and interactable are different things, and should be shown and calculated separately. Change the current walkable to interactable.
+Add in filters for Sleeping Pattern, Attitude, Walkable (when extraction has returns these values)

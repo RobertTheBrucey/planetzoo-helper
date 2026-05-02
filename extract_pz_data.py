@@ -5,13 +5,18 @@ Extract Planet Zoo animal habitat data from game OVL files using cobra-tools.
 For each habitat animal found, outputs:
   terrain slider ranges (grassS, grassL, soil, rock, sand, snow)
   plant coverage range
-  minimum enclosure land area
+  minimum enclosure land area (individual and family group)
+  comfortable temperature range (°C)
+  adults in family group (min/max)
   barrier grade and height
   enrichedBy partner names
   guestWalk flag
   latin (scientific) name
   display name (with correct punctuation)
   biomes and continents
+  behaviour flags (climber, canSwim, deepDiver, burrower)
+  isPredator flag (animals with pounce/predation data)
+  interspecies interaction data (predator/prey/compatibility raw rows)
 
 All data is extracted directly from game files — no reference animals.js needed.
 
@@ -216,6 +221,13 @@ def table_exists(conn: sqlite3.Connection, name: str) -> bool:
     return row is not None
 
 
+def get_table_columns(conn: sqlite3.Connection, table_name: str) -> set:
+    """Return set of column names for a table (empty set if table does not exist)."""
+    if not table_exists(conn, table_name):
+        return set()
+    return {row[1] for row in conn.execute(f"PRAGMA table_info({table_name})")}
+
+
 # ---------------------------------------------------------------------------
 # Per-database queries
 # ---------------------------------------------------------------------------
@@ -242,33 +254,102 @@ def query_terrain(conn: sqlite3.Connection) -> dict:
 
 
 def query_habitat(conn: sqlite3.Connection) -> dict:
-    """AnimalHabitatRequirements → plant coverage (0–100 %)."""
+    """
+    AnimalHabitatRequirements → plant coverage (0–100 %) and temperature range (°C).
+
+    Temperature columns are discovered at runtime — several naming conventions are
+    tried.  If none match, the known column names are printed so they can be added.
+    """
     if not table_exists(conn, "AnimalHabitatRequirements"):
         return {}
+    cols = get_table_columns(conn, "AnimalHabitatRequirements")
+
+    # Try candidate pairs in order of likelihood.
+    temp_pair: tuple[str, str] | None = None
+    for mn, mx in [
+        ("MinComfortableTemperature", "MaxComfortableTemperature"),
+        ("MinTemperature", "MaxTemperature"),
+        ("ComfortableTemperatureMin", "ComfortableTemperatureMax"),
+        ("TempMin", "TempMax"),
+        ("MinTemp", "MaxTemp"),
+    ]:
+        if mn in cols and mx in cols:
+            temp_pair = (mn, mx)
+            break
+
+    unknown = cols - {"AnimalType", "MinPlantCoverage", "MaxPlantCoverage"}
+    if temp_pair is None and unknown:
+        print(f"  NOTE: AnimalHabitatRequirements extra columns (no temp found): {sorted(unknown)}")
+
     out = {}
-    for row in conn.execute(
-        "SELECT AnimalType, MinPlantCoverage, MaxPlantCoverage FROM AnimalHabitatRequirements"
-    ):
-        animal = row["AnimalType"]
-        out[animal] = {
+    for row in conn.execute("SELECT * FROM AnimalHabitatRequirements"):
+        d = dict(row)
+        animal = d["AnimalType"]
+        entry: dict = {
             "plants": [
-                round((row["MinPlantCoverage"] or 0) * 100),
-                round((row["MaxPlantCoverage"] or 0) * 100),
+                round((d.get("MinPlantCoverage") or 0) * 100),
+                round((d.get("MaxPlantCoverage") or 0) * 100),
             ]
         }
+        if temp_pair:
+            t_min = d.get(temp_pair[0])
+            t_max = d.get(temp_pair[1])
+            if t_min is not None:
+                entry["tempMin"] = round(float(t_min), 1)
+            if t_max is not None:
+                entry["tempMax"] = round(float(t_max), 1)
+        out[animal] = entry
     return out
 
 
 def query_space(conn: sqlite3.Connection) -> dict:
-    """SpaceRequirements → minimum land area in m²."""
+    """
+    SpaceRequirements → per-individual minimum land area and (if present)
+    family-group minimum land area, both in m².
+
+    Returns dict of animalType → {landMin, landMinGroup?}.
+    """
     if not table_exists(conn, "SpaceRequirements"):
         return {}
+    cols = get_table_columns(conn, "SpaceRequirements")
+
+    _known_space_cols = {
+        "AnimalType", "MinimumSpace", "SpacePerAdditionalAnimal",
+        "MinimumAquaticSpace", "MinimumAquaticDepth", "AquaticSpacePerAdditionalAnimal",
+        "MinimumClimbableSpace", "ClimbableSpacePerAdditionalAnimal",
+        "MinimumDeepSwimmingSpace", "DeepSwimmingSpacePerAdditionalAnimal",
+        "DeepSwimmingRequirementAffectsWelfare", "DoesJuvenileSwim", "DoesJuvenileDeepSwim",
+        "MinimumShelterAreaPerAnimal",
+    }
+    unknown = cols - _known_space_cols
+    if unknown:
+        print(f"  NOTE: SpaceRequirements unknown columns: {sorted(unknown)}")
+
     out = {}
-    for row in conn.execute(
-        "SELECT AnimalType, MinimumSpace FROM SpaceRequirements"
-    ):
-        if row["MinimumSpace"] is not None:
-            out[row["AnimalType"]] = int(round(row["MinimumSpace"]))
+    for row in conn.execute("SELECT * FROM SpaceRequirements"):
+        d = dict(row)
+        animal = d["AnimalType"]
+        if d.get("MinimumSpace") is None:
+            continue
+        entry: dict = {"landMin": int(round(d["MinimumSpace"]))}
+        _space_cols: list[tuple] = [
+            ("SpacePerAdditionalAnimal",             "spacePerAdditional",        lambda v: int(round(v))),
+            ("MinimumAquaticSpace",                  "aquaticMin",                lambda v: int(round(v))),
+            ("MinimumAquaticDepth",                  "aquaticDepth",              lambda v: round(float(v), 2)),
+            ("AquaticSpacePerAdditionalAnimal",      "aquaticPerAdditional",      lambda v: int(round(v))),
+            ("MinimumClimbableSpace",                "climbMin",                  lambda v: int(round(v))),
+            ("ClimbableSpacePerAdditionalAnimal",    "climbPerAdditional",        lambda v: int(round(v))),
+            ("MinimumDeepSwimmingSpace",             "deepSwimMin",               lambda v: int(round(v))),
+            ("DeepSwimmingSpacePerAdditionalAnimal", "deepSwimPerAdditional",     lambda v: int(round(v))),
+            ("DeepSwimmingRequirementAffectsWelfare","deepSwimAffectsWelfare",    bool),
+            ("DoesJuvenileSwim",                     "juvenileSwims",             bool),
+            ("DoesJuvenileDeepSwim",                 "juvenileDeepSwims",         bool),
+            ("MinimumShelterAreaPerAnimal",          "shelterMin",                lambda v: int(round(v))),
+        ]
+        for col, key, transform in _space_cols:
+            if col in cols and d.get(col) is not None:
+                entry[key] = transform(d[col])
+        out[animal] = entry
     return out
 
 
@@ -353,6 +434,205 @@ def query_continent_prefs(conn: sqlite3.Connection) -> dict:
         if mapped:
             out.setdefault(row["AnimalType"], []).append(mapped)
     return out
+
+
+def query_population(conn: sqlite3.Connection) -> dict:
+    """
+    DesiredPopulationSizes → adults min/max per animal (family group size).
+
+    Actual columns confirmed from game files: MinPopulation, MaxPopulation.
+    """
+    if not table_exists(conn, "DesiredPopulationSizes"):
+        return {}
+    cols = get_table_columns(conn, "DesiredPopulationSizes")
+
+    min_col: str | None = next(
+        (c for c in (
+            "MinPopulation", "MinAdults", "MinimumAdults", "DesiredMinAdults",
+            "MinDesiredAdults", "MinGroupSize", "MinimumGroupSize", "MinMembers",
+        ) if c in cols),
+        None,
+    )
+    max_col: str | None = next(
+        (c for c in (
+            "MaxPopulation", "MaxAdults", "MaximumAdults", "DesiredMaxAdults",
+            "MaxDesiredAdults", "MaxGroupSize", "MaximumGroupSize", "MaxMembers",
+        ) if c in cols),
+        None,
+    )
+    if min_col is None or max_col is None:
+        print(f"  NOTE: DesiredPopulationSizes columns (unmatched): {sorted(cols)}")
+
+    out = {}
+    for row in conn.execute("SELECT * FROM DesiredPopulationSizes"):
+        d = dict(row)
+        animal = d["AnimalType"]
+        entry: dict = {}
+        if min_col and d.get(min_col) is not None:
+            entry["adultsMin"] = int(d[min_col])
+        if max_col and d.get(max_col) is not None:
+            entry["adultsMax"] = int(d[max_col])
+        if entry:
+            out[animal] = entry
+    return out
+
+
+def query_fertility(conn: sqlite3.Connection) -> dict:
+    """
+    FertilityData → litter size range and reproduction timing per animal.
+
+    Confirmed columns: AnimalType, MinLitterSize, MaxLitterSize, GestationTime,
+    InterBirthTime, FertilityValue, InfertileAge, ZoopediaReproduction.
+    GestationTime and InterBirthTime are in in-game days.
+    """
+    if not table_exists(conn, "FertilityData"):
+        return {}
+    cols = get_table_columns(conn, "FertilityData")
+    out = {}
+    for row in conn.execute("SELECT * FROM FertilityData"):
+        d = dict(row)
+        animal = d["AnimalType"]
+        entry: dict = {}
+        for col, key, fn in [
+            ("MinLitterSize",  "minLitterSize",  lambda v: int(v)),
+            ("MaxLitterSize",  "maxLitterSize",  lambda v: int(v)),
+            ("GestationTime",  "gestationTime",  lambda v: int(round(v))),
+            ("InterBirthTime", "interBirthTime", lambda v: int(round(v))),
+        ]:
+            if col in cols and d.get(col) is not None:
+                entry[key] = fn(d[col])
+        if entry:
+            out[animal] = entry
+    return out
+
+
+def query_gender_ratios(conn: sqlite3.Connection) -> dict:
+    """
+    DesiredGenderRatios → group composition limits per animal.
+
+    Confirmed columns: AnimalType, MaxMalesSingle, MaxFemalesSingle,
+    MaxMalesBoth, MaxFemalesBoth, DesiredRatio, DominantSex.
+
+    *Single = max of that sex in a single-sex group.
+    *Both = max of that sex in a mixed-sex group.
+    MaxFemalesBoth is used with MaxLitterSize to compute the max juvenile
+    count when deriving the correct landMinGroup.
+    """
+    if not table_exists(conn, "DesiredGenderRatios"):
+        return {}
+    cols = get_table_columns(conn, "DesiredGenderRatios")
+    out = {}
+    for row in conn.execute("SELECT * FROM DesiredGenderRatios"):
+        d = dict(row)
+        animal = d["AnimalType"]
+        entry: dict = {}
+        for col, key in [
+            ("MaxMalesSingle",   "maxMalesSingle"),
+            ("MaxFemalesSingle", "maxFemalesSingle"),
+            ("MaxMalesBoth",     "maxMalesBoth"),
+            ("MaxFemalesBoth",   "maxFemalesBoth"),
+        ]:
+            if col in cols and d.get(col) is not None:
+                entry[key] = int(d[col])
+        if entry:
+            out[animal] = entry
+    return out
+
+
+def query_predation_profile(conn: sqlite3.Connection) -> dict:
+    """
+    InterspeciesInteractionData → per-animal predation profile.
+
+    Despite its name this table is NOT a pair table — it has one row per animal
+    describing its role in the food chain.  Actual columns confirmed from game files:
+
+      PredatorPrey            — 'Predator' or 'Prey'
+      AdultTrophicLevel       — 'Level00'…'Level30', 'LevelApex'
+      JuvenileTrophicLevel    — same scale
+      Temperament             — 'Passive' or 'Aggressive'
+      HasDefensiveIntimidate  — 0/1; animal can intimidate predators away
+      DefensiveIntimidationStartRadius / EndRadius / GimmickRadius — radii (m)
+
+    A predator can eat any Prey animal whose AdultTrophicLevel is numerically lower
+    than the predator's own AdultTrophicLevel.  'LevelApex' prey cannot be killed
+    by any predator (e.g. Aldabra Giant Tortoise, African Spurred Tortoise).
+
+    Returns dict of animalType → profile dict.
+    """
+    if not table_exists(conn, "InterspeciesInteractionData"):
+        return {}
+
+    out: dict[str, dict] = {}
+    try:
+        for row in conn.execute(
+            "SELECT AnimalType, PredatorPrey, AdultTrophicLevel, JuvenileTrophicLevel,"
+            " Temperament, HasDefensiveIntimidate,"
+            " DefensiveIntimidationStartRadius, DefensiveIntimidationEndRadius,"
+            " DefensiveIntimidationGimmickRadius"
+            " FROM InterspeciesInteractionData"
+        ):
+            d = dict(row)
+            animal = d["AnimalType"]
+            out[animal] = {
+                "predatorPrey":             d.get("PredatorPrey", ""),
+                "adultTrophicLevel":        d.get("AdultTrophicLevel", ""),
+                "juvenileTrophicLevel":     d.get("JuvenileTrophicLevel", ""),
+                "temperament":              d.get("Temperament", ""),
+                "hasDefensiveIntimidate":   bool(d.get("HasDefensiveIntimidate", 0)),
+                "defensiveIntimidationRadius": d.get("DefensiveIntimidationStartRadius"),
+            }
+    except sqlite3.OperationalError as exc:
+        cols = get_table_columns(conn, "InterspeciesInteractionData")
+        print(f"  NOTE: InterspeciesInteractionData query error: {exc}")
+        print(f"  Actual columns: {sorted(cols)}")
+    return out
+
+
+def query_behaviors(conn: sqlite3.Connection) -> dict:
+    """
+    IdleBehaviourWeights → climber / canSwim / deepDiver / burrower flags.
+
+    A flag is set True if any row for that animal has the relevant action
+    weight > 0 (across any age group / gender combination).
+    """
+    if not table_exists(conn, "IdleBehaviourWeights"):
+        return {}
+    out: dict[str, dict] = {}
+    try:
+        for row in conn.execute(
+            "SELECT AnimalType, ActionWeightClimbing, ActionWeightInWater,"
+            " ActionWeightDeepSwim, ActionWeightInBurrow FROM IdleBehaviourWeights"
+        ):
+            animal = row["AnimalType"]
+            e = out.setdefault(animal, {
+                "climber": False, "canSwim": False,
+                "deepDiver": False, "burrower": False,
+            })
+            if (row["ActionWeightClimbing"] or 0) > 0:
+                e["climber"]   = True
+            if (row["ActionWeightInWater"] or 0) > 0:
+                e["canSwim"]   = True
+            if (row["ActionWeightDeepSwim"] or 0) > 0:
+                e["deepDiver"] = True
+            if (row["ActionWeightInBurrow"] or 0) > 0:
+                e["burrower"]  = True
+    except sqlite3.OperationalError as exc:
+        print(f"  NOTE: IdleBehaviourWeights query error: {exc}")
+    return out
+
+
+def query_predators(conn: sqlite3.Connection) -> set:
+    """
+    PounceVariablesData → set of animals that can pounce (predators).
+
+    Any animal with rows in PounceVariablesData is treated as a predator.
+    """
+    if not table_exists(conn, "PounceVariablesData"):
+        return set()
+    return {
+        row[0]
+        for row in conn.execute("SELECT DISTINCT AnimalType FROM PounceVariablesData")
+    }
 
 
 def query_exhibits(conn: sqlite3.Connection) -> set:
@@ -485,6 +765,10 @@ def format_js_entry(animal: dict, loc_map: dict) -> str:
     def rng(pair: list) -> str:
         return f"[{pair[0]},{pair[1]}]"
 
+    def js_opt_num(v) -> str:
+        """Format an optional number as JS value (null if None)."""
+        return "null" if v is None else str(v)
+
     if exhibit:
         return (
             f"  {{id:'{app_id}',name:{js_str(name)},latin:'{latin}',"
@@ -494,9 +778,37 @@ def format_js_entry(animal: dict, loc_map: dict) -> str:
             f"plants:[0,100]}},"
         )
 
-    t      = animal.get("terrain", {})
-    plants = animal.get("plants", [0, 100])
-    land   = animal.get("landMin", 0)
+    t          = animal.get("terrain", {})
+    plants     = animal.get("plants", [0, 100])
+    land          = animal.get("landMin", 0)
+    land_group    = animal.get("landMinGroup")
+    spa           = animal.get("spacePerAdditional")
+    aquatic_min   = animal.get("aquaticMin")
+    aquatic_per   = animal.get("aquaticPerAdditional")
+    aquatic_depth = animal.get("aquaticDepth")
+    climb_min     = animal.get("climbMin")
+    deep_swim_min = animal.get("deepSwimMin")
+    shelter_min   = animal.get("shelterMin")
+    temp_min      = animal.get("tempMin")
+    temp_max      = animal.get("tempMax")
+    adults_min    = animal.get("adultsMin")
+    adults_max    = animal.get("adultsMax")
+    min_litter    = animal.get("minLitterSize")
+    max_litter    = animal.get("maxLitterSize")
+    gestation     = animal.get("gestationTime")
+    inter_birth   = animal.get("interBirthTime")
+    max_m_single  = animal.get("maxMalesSingle")
+    max_f_single  = animal.get("maxFemalesSingle")
+    max_m_both    = animal.get("maxMalesBoth")
+    max_f_both    = animal.get("maxFemalesBoth")
+    is_pred       = animal.get("isPredator", False)
+    well_defended = animal.get("wellDefended", False)
+    trophic       = animal.get("adultTrophicLevel", "")
+    temperament   = animal.get("temperament", "")
+    climber       = animal.get("climber",   False)
+    can_swim      = animal.get("canSwim",   False)
+    deep_diver    = animal.get("deepDiver", False)
+    burrower      = animal.get("burrower",  False)
 
     terrain_js = (
         f"{{grassS:{rng(t.get('grassS', [0,100]))},"
@@ -511,12 +823,30 @@ def format_js_entry(animal: dict, loc_map: dict) -> str:
     else:
         barrier_js = "null"
 
+    def tf(b: bool) -> str:
+        return "true" if b else "false"
+
     return (
         f"  {{id:'{app_id}',name:{js_str(name)},latin:'{latin}',"
         f"pack:'{pack}',continents:{conts_js},biomes:{biomes_js},"
-        f"img:'{img}',enrichedBy:{enriched_js},guestWalk:{'true' if guest else 'false'},"
+        f"img:'{img}',enrichedBy:{enriched_js},guestWalk:{tf(guest)},"
         f"exhibit:false,terrain:{terrain_js},"
-        f"plants:{rng(plants)},landMin:{land},barrier:{barrier_js}}},"
+        f"plants:{rng(plants)},"
+        f"landMin:{land},landMinGroup:{js_opt_num(land_group)},spacePerAdditional:{js_opt_num(spa)},"
+        f"aquaticMin:{js_opt_num(aquatic_min)},aquaticPerAdditional:{js_opt_num(aquatic_per)},"
+        f"aquaticDepth:{js_opt_num(aquatic_depth)},"
+        f"climbMin:{js_opt_num(climb_min)},deepSwimMin:{js_opt_num(deep_swim_min)},"
+        f"shelterMin:{js_opt_num(shelter_min)},"
+        f"tempMin:{js_opt_num(temp_min)},tempMax:{js_opt_num(temp_max)},"
+        f"adultsMin:{js_opt_num(adults_min)},adultsMax:{js_opt_num(adults_max)},"
+        f"minLitterSize:{js_opt_num(min_litter)},maxLitterSize:{js_opt_num(max_litter)},"
+        f"gestationTime:{js_opt_num(gestation)},interBirthTime:{js_opt_num(inter_birth)},"
+        f"maxMalesSingle:{js_opt_num(max_m_single)},maxFemalesSingle:{js_opt_num(max_f_single)},"
+        f"maxMalesBoth:{js_opt_num(max_m_both)},maxFemalesBoth:{js_opt_num(max_f_both)},"
+        f"isPredator:{tf(is_pred)},wellDefended:{tf(well_defended)},"
+        f"trophicLevel:'{trophic}',temperament:'{temperament}',"
+        f"climber:{tf(climber)},canSwim:{tf(can_swim)},deepDiver:{tf(deep_diver)},burrower:{tf(burrower)},"
+        f"barrier:{barrier_js}}},"
     )
 
 
@@ -535,17 +865,22 @@ def extract_all(cobra_tools: Path, game_dir: Path, extract_root: Path) -> tuple[
     content_dirs = find_content_dirs(game_dir)
     print(f"Found {len(content_dirs)} content directories.")
 
-    terrain_map:        dict[str, dict]  = {}
-    habitat_map:        dict[str, dict]  = {}
-    space_map:          dict[str, int]   = {}
-    barrier_map:        dict[str, dict]  = {}
-    guest_walk_set:     set[str]         = set()
-    enrichment_map:     dict[str, set]   = {}
-    definitions:        dict[str, str]   = {}
-    exhibit_set:        set[str]         = set()
-    biome_pref_map:     dict[str, list]  = {}
-    continent_pref_map: dict[str, list]  = {}
-    loc_map:            dict[str, dict]  = {}  # game_id_lower → {name, latin, barrier}
+    terrain_map:         dict[str, dict]  = {}
+    habitat_map:         dict[str, dict]  = {}  # plants + optional temp
+    space_map:           dict[str, dict]  = {}  # land/aquatic/climb/shelter space
+    barrier_map:         dict[str, dict]  = {}
+    guest_walk_set:      set[str]         = set()
+    enrichment_map:      dict[str, set]   = {}
+    definitions:         dict[str, str]   = {}
+    exhibit_set:         set[str]         = set()
+    biome_pref_map:      dict[str, list]  = {}
+    continent_pref_map:  dict[str, list]  = {}
+    population_map:      dict[str, dict]  = {}  # adultsMin/adultsMax
+    fertility_map:       dict[str, dict]  = {}  # minLitterSize/maxLitterSize/gestationTime/interBirthTime
+    gender_ratio_map:    dict[str, dict]  = {}  # maxMales/FemalesSingle/Both
+    interspecies_map:    dict[str, dict]  = {}  # per-animal predation profile
+    behavior_map:        dict[str, dict]  = {}  # climber/canSwim/deepDiver/burrower
+    loc_map:             dict[str, dict]  = {}  # game_id_lower → {name, latin, barrier}
 
     for content_dir in content_dirs:
         ovl_path = content_dir / "Main.ovl"
@@ -575,6 +910,22 @@ def extract_all(cobra_tools: Path, game_dir: Path, extract_root: Path) -> tuple[
                     definitions.update(query_definitions(conn))
                     biome_pref_map.update(query_biome_prefs(conn))
                     continent_pref_map.update(query_continent_prefs(conn))
+                    for animal, data in query_population(conn).items():
+                        population_map.setdefault(animal, {}).update(data)
+                    for animal, data in query_fertility(conn).items():
+                        fertility_map[animal] = data
+                    for animal, data in query_gender_ratios(conn).items():
+                        gender_ratio_map[animal] = data
+                    for animal, profile in query_predation_profile(conn).items():
+                        interspecies_map[animal] = profile
+                    for animal, data in query_behaviors(conn).items():
+                        entry = behavior_map.setdefault(animal, {
+                            "climber": False, "canSwim": False,
+                            "deepDiver": False, "burrower": False,
+                        })
+                        for k in ("climber", "canSwim", "deepDiver", "burrower"):
+                            entry[k] = entry[k] or data.get(k, False)
+                    # isPredator is derived from InterspeciesInteractionData.PredatorPrey
                 elif fname.endswith("zoopedia.fdb"):
                     barrier_map.update(query_barrier(conn))
                 elif fname.endswith("exhibits.fdb"):
@@ -614,10 +965,78 @@ def extract_all(cobra_tools: Path, game_dir: Path, extract_root: Path) -> tuple[
         }
 
         if not is_exhibit:
-            record["terrain"] = terrain_map.get(game_id, {})
-            record["plants"]  = habitat_map.get(game_id, {}).get("plants", [0, 100])
-            record["landMin"] = space_map.get(game_id, 0)
-            record["barrier"] = barrier_map.get(game_id, {})
+            space_data    = space_map.get(game_id, {})
+            habitat_data  = habitat_map.get(game_id, {})
+            pop_data      = population_map.get(game_id, {})
+            fertility_data = fertility_map.get(game_id, {})
+            gender_data   = gender_ratio_map.get(game_id, {})
+            beh_data      = behavior_map.get(game_id, {})
+            pred_data     = interspecies_map.get(game_id, {})
+
+            adults_min       = pop_data.get("adultsMin")
+            adults_max       = pop_data.get("adultsMax")
+            land_min         = space_data.get("landMin", 0)
+            spa              = space_data.get("spacePerAdditional")
+            max_females_both = gender_data.get("maxFemalesBoth")
+            max_litter       = fertility_data.get("maxLitterSize")
+
+            # Compute family-group maximum space (largest group including juveniles):
+            # Total animals = MaxPopulation adults + (MaxFemalesBoth × MaxLitterSize) juveniles
+            # landMinGroup = MinimumSpace + SpacePerAdditionalAnimal × (total − 1)
+            # Validated against Villanelle's spreadsheet: Aardvark → 330 + 60×(2+1×1−1) = 450 ✓
+            if spa is not None and adults_max is not None:
+                juveniles      = (max_females_both or 0) * (max_litter or 0)
+                total_max      = adults_max + juveniles
+                land_min_group: int | None = land_min + spa * max(0, total_max - 1)
+            else:
+                land_min_group = None
+
+            record["terrain"]              = terrain_map.get(game_id, {})
+            record["plants"]               = habitat_data.get("plants", [0, 100])
+            record["landMin"]              = land_min
+            record["spacePerAdditional"]   = spa
+            record["landMinGroup"]         = land_min_group
+            # Aquatic/climbing/shelter space (from SpaceRequirements)
+            record["aquaticMin"]           = space_data.get("aquaticMin")
+            record["aquaticPerAdditional"] = space_data.get("aquaticPerAdditional")
+            record["aquaticDepth"]         = space_data.get("aquaticDepth")
+            record["climbMin"]             = space_data.get("climbMin")
+            record["climbPerAdditional"]   = space_data.get("climbPerAdditional")
+            record["deepSwimMin"]          = space_data.get("deepSwimMin")
+            record["deepSwimPerAdditional"]= space_data.get("deepSwimPerAdditional")
+            record["shelterMin"]           = space_data.get("shelterMin")
+            record["juvenileSwims"]        = space_data.get("juvenileSwims", False)
+            record["juvenileDeepSwims"]    = space_data.get("juvenileDeepSwims", False)
+            record["tempMin"]              = habitat_data.get("tempMin")
+            record["tempMax"]              = habitat_data.get("tempMax")
+            record["adultsMin"]            = adults_min
+            record["adultsMax"]            = adults_max
+            # Fertility (from FertilityData)
+            record["minLitterSize"]        = fertility_data.get("minLitterSize")
+            record["maxLitterSize"]        = max_litter
+            record["gestationTime"]        = fertility_data.get("gestationTime")
+            record["interBirthTime"]       = fertility_data.get("interBirthTime")
+            # Group composition (from DesiredGenderRatios)
+            record["maxMalesSingle"]       = gender_data.get("maxMalesSingle")
+            record["maxFemalesSingle"]     = gender_data.get("maxFemalesSingle")
+            record["maxMalesBoth"]         = gender_data.get("maxMalesBoth")
+            record["maxFemalesBoth"]       = max_females_both
+            # Predation profile (from InterspeciesInteractionData)
+            record["predatorPrey"]         = pred_data.get("predatorPrey", "")
+            record["isPredator"]           = pred_data.get("predatorPrey") == "Predator"
+            record["adultTrophicLevel"]    = pred_data.get("adultTrophicLevel", "")
+            record["juvenileTrophicLevel"] = pred_data.get("juvenileTrophicLevel", "")
+            record["temperament"]          = pred_data.get("temperament", "")
+            # wellDefended: LevelApex prey cannot be killed by any predator (e.g. tortoises)
+            record["wellDefended"]         = pred_data.get("adultTrophicLevel") == "LevelApex"
+            record["hasDefensiveIntimidate"] = pred_data.get("hasDefensiveIntimidate", False)
+            record["defensiveIntimidationRadius"] = pred_data.get("defensiveIntimidationRadius")
+            # Behaviour flags (from IdleBehaviourWeights)
+            record["climber"]              = beh_data.get("climber",   False)
+            record["canSwim"]              = beh_data.get("canSwim",   False)
+            record["deepDiver"]            = beh_data.get("deepDiver", False)
+            record["burrower"]             = beh_data.get("burrower",  False)
+            record["barrier"]              = barrier_map.get(game_id, {})
 
         animals[game_id] = record
 
@@ -716,11 +1135,11 @@ def main():
         "const ANIMALS = [",
         "// ===== HABITAT ANIMALS =====",
     ]
-    for game_id, rec in sorted(animals.items()):
+    for rec in sorted(animals.values(), key=lambda r: r["game_id"]):
         if not rec["exhibit"]:
             lines.append(format_js_entry(rec, loc_map))
     lines += ["", "// ===== EXHIBIT ANIMALS ====="]
-    for game_id, rec in sorted(animals.items()):
+    for rec in sorted(animals.values(), key=lambda r: r["game_id"]):
         if rec["exhibit"]:
             lines.append(format_js_entry(rec, loc_map))
     lines.append("];")
