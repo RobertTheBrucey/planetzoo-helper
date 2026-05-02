@@ -794,6 +794,38 @@
     margin-left: auto;
     white-space: nowrap;
   }
+
+  /* Use Crimson Pro for small UI chips/labels (small-serif look) */
+  .tag, .habitat-chip, .count-badge, .clear-btn,
+  .barrier-item-label, .terrain-label, .enclosure-label {
+    font-family: 'Crimson Pro', serif;
+  }
+
+  /* Trait chips on animal list items */
+  .animal-traits { display: flex; flex-wrap: wrap; gap: 3px; margin-top: 2px; }
+  .tc { padding: 1px 4px; border-radius: 2px; font-size: 0.6rem; font-family: 'Crimson Pro', serif; }
+  .tc-pred     { background: rgba(180,30,30,0.2);   border: 1px solid rgba(180,30,30,0.4);   color: #e07070; }
+  .tc-defended { background: rgba(80,160,80,0.15);  border: 1px solid rgba(80,160,80,0.35);  color: #70c070; }
+  .tc-swim     { background: rgba(41,128,185,0.15); border: 1px solid rgba(41,128,185,0.3);  color: #5aafe0; }
+  .tc-dive     { background: rgba(20,80,150,0.2);   border: 1px solid rgba(20,80,150,0.4);   color: #4080d0; }
+  .tc-climb    { background: rgba(150,80,200,0.15); border: 1px solid rgba(150,80,200,0.3);  color: #a060d0; }
+  .tc-burrow   { background: rgba(140,90,40,0.2);   border: 1px solid rgba(140,90,40,0.4);   color: #c08050; }
+  .tc-aggr     { background: rgba(200,120,20,0.15); border: 1px solid rgba(200,120,20,0.35); color: #d09030; }
+  .tc-interact { background: rgba(155,108,217,0.15);border: 1px solid rgba(155,108,217,0.3); color: #c49de0; }
+
+  /* Habitat size table in enclosure panel */
+  .size-table { width: 100%; font-size: 0.8rem; margin-top: 6px; border-collapse: collapse; }
+  .size-row td, .size-row th { padding: 3px 0; vertical-align: baseline; }
+  .size-td-label { color: var(--text-dim); font-size: 0.69rem; font-family: 'Crimson Pro', serif; width: 34%; }
+  .size-td-val   { color: var(--text); font-weight: 600; text-align: right; white-space: nowrap; width: 22%; }
+  .size-aquatic  { color: #5aafe0; }
+
+  /* Per-animal compact size on selected card */
+  .sa-sizes { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 5px; font-size: 0.75rem; }
+  .sa-size-item { display: flex; gap: 4px; align-items: baseline; }
+  .sa-size-label { color: var(--text-dim); font-size: 0.65rem; font-family: 'Crimson Pro', serif; }
+  .sa-size-val   { color: var(--text-bright); font-weight: 600; }
+  .sa-size-aquatic { color: #5aafe0; }
 </style>
 </head>
 <body>
@@ -826,6 +858,11 @@
       <div class="filter-group">
         <div class="section-title">Continents</div>
         <div class="tag-group" id="continent-filters"></div>
+      </div>
+
+      <div class="filter-group">
+        <div class="section-title">Traits</div>
+        <div class="tag-group" id="trait-filters"></div>
       </div>
 
       <div class="filter-group">
@@ -897,12 +934,14 @@ let activeBiomes = new Set();
 
 PACKS.forEach(p => activePacks.add(p));
 let activeContinents = new Set();
+let activeTraits = new Set();
 let options = {
   allowIncompatContinent: false,
   allowIncompatBiome: false,
   allowIncompatTemp: false,
   allowIncompatTerrain: false,
   allowIncompatCoverage: false,
+  allowIncompatPredator: false,
   hideIncompat: true,
   includeExhibit: false,
   showOnlyEnrichment: false,
@@ -913,6 +952,64 @@ let enclosureSize = null;
 // ===== HELPERS =====
 function getAnimalById(id) { return ANIMALS.find(a => a.id === id); }
 function getAnimalByName(name) { return ANIMALS.find(a => a.name === name); }
+
+function trophicNum(level) {
+  if (!level) return -1;
+  if (level === 'LevelApex') return 999;
+  const m = String(level).match(/\d+/);
+  return m ? parseInt(m[0]) : -1;
+}
+
+function computeAnimalSizes(animal) {
+  if (animal.exhibit) return null;
+  const spa    = animal.spacePerAdditional || 0;
+  const base   = animal.landMin || 0;
+  const aMin   = Math.max(2, animal.adultsMin || 1);
+  const aMax   = animal.adultsMax || aMin;
+  const fBoth  = animal.maxFemalesBoth || 1;
+  const litMax = animal.maxLitterSize || 0;
+  const litMin = animal.minLitterSize || litMax;
+  const aqBase = animal.aquaticMin || 0;
+  const aqPer  = animal.aquaticPerAdditional || 0;
+  function land(n) { return base + spa * Math.max(0, n - 1); }
+  function aq(n)   { return aqBase > 0 ? aqBase + aqPer * Math.max(0, n - 1) : 0; }
+  const nFamMin = aMin + litMin;
+  const nFamMax = aMax + fBoth * litMax;
+  return {
+    individual:    { land: land(1),       aquatic: aq(1) },
+    adultMinGroup: { land: land(aMin),    aquatic: aq(aMin) },
+    familyMin:     { land: land(nFamMin), aquatic: aq(nFamMin) },
+    familyMax:     { land: land(nFamMax), aquatic: aq(nFamMax) },
+    adultsMin: aMin, adultsMax: aMax, fBoth, litMax, litMin,
+  };
+}
+
+function getCombinedTempRange(nonExAnimals) {
+  const w = nonExAnimals.filter(a => a.tempMin != null && a.tempMax != null);
+  if (!w.length) return null;
+  const cMin = Math.max(...w.map(a => a.tempMin));
+  const cMax = Math.min(...w.map(a => a.tempMax));
+  return { min: cMin, max: cMax, conflict: cMin > cMax };
+}
+
+function getPredatorWarnings(sel) {
+  const habitat = sel.filter(a => !a.exhibit);
+  const warnings = [];
+  for (const pred of habitat.filter(a => a.isPredator)) {
+    const pl = trophicNum(pred.trophicLevel);
+    for (const p of habitat.filter(a => !a.isPredator && !a.wellDefended)) {
+      if (p.id === pred.id) continue;
+      if (pl > trophicNum(p.trophicLevel)) {
+        warnings.push(`⚔ ${pred.name} will prey on ${p.name}`);
+      }
+    }
+  }
+  const aggrHigh = habitat.filter(a => a.temperament === 'Aggressive' && trophicNum(a.trophicLevel) >= 25);
+  if (aggrHigh.length > 1) {
+    warnings.push(`⚔ Dominance conflict: ${aggrHigh.map(a => a.name).join(' & ')} will fight (aggressive, high-tier)`);
+  }
+  return warnings;
+}
 
 function getImgUrl(animal) {
   if (!animal.img) return 'data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 36 36%22><rect fill=%22%231c2330%22 width=%2236%22 height=%2236%22/><text x=%2218%22 y=%2224%22 font-size=%2218%22 text-anchor=%22middle%22>🐾</text></svg>';
@@ -1013,17 +1110,59 @@ function renderTerrainSection(sel) {
       </div>
     </div>` : '';
 
-  const landMins = nonEx.filter(a => a.landMin).map(a => a.landMin);
-  const minEnclosure = landMins.length ? Math.max(...landMins) : null;
-  const enclosureSection = minEnclosure !== null ? `
-    <hr class="terrain-divider">
-    <div class="selected-header" style="margin-bottom:4px">Minimum Enclosure Size</div>
-    <div class="barrier-row">
-      <div class="barrier-item">
-        <span class="barrier-item-label">Land Area</span>
-        <span class="barrier-item-val">${minEnclosure.toLocaleString()} m²</span>
-      </div>
-    </div>` : '';
+  // Temperature
+  const tempRange = getCombinedTempRange(nonEx);
+  const tempSection = tempRange ? (() => {
+    if (tempRange.conflict) {
+      return `<hr class="terrain-divider">
+        <div class="selected-header" style="margin-bottom:4px">Temperature</div>
+        <div class="terrain-total error">✗ Conflict: ranges don't overlap (${tempRange.min}°C min vs ${tempRange.max}°C max)</div>`;
+    }
+    return `<hr class="terrain-divider">
+      <div class="selected-header" style="margin-bottom:4px">Temperature</div>
+      <div style="font-size:0.85rem;color:var(--text)">${tempRange.min}°C – ${tempRange.max}°C comfortable range</div>`;
+  })() : '';
+
+  // Habitat sizes — always 4 rows × 3 columns; multi-species = max of each tier
+  const sizes = nonEx.map(a => computeAnimalSizes(a)).filter(Boolean);
+  let enclosureSection = '';
+  if (sizes.length) {
+    const TIERS = ['individual','adultMinGroup','familyMin','familyMax'];
+    const combined = Object.fromEntries(TIERS.map(t => [t, {
+      land:    Math.max(...sizes.map(s => s[t].land)),
+      aquatic: Math.max(...sizes.map(s => s[t].aquatic)),
+    }]));
+    const isSingle = sizes.length === 1;
+    const s = sizes[0];
+    const labels = [
+      'Individual',
+      isSingle ? `Adults (min ${s.adultsMin})` : 'Adults (min)',
+      'Min family',
+      'Max family',
+    ];
+    function sizeRow(label, tier) {
+      const l = tier.land, q = tier.aquatic, tot = l + q;
+      const qs = q > 0 ? q.toLocaleString() : '—';
+      const ts = q > 0 ? tot.toLocaleString() : l.toLocaleString();
+      return `<tr class="size-row">
+        <td class="size-td-label">${label}</td>
+        <td class="size-td-val">${l.toLocaleString()} m²</td>
+        <td class="size-td-val size-aquatic">${qs}${q > 0 ? ' m²' : ''}</td>
+        <td class="size-td-val">${ts} m²</td>
+      </tr>`;
+    }
+    enclosureSection = `<hr class="terrain-divider">
+      <div class="selected-header" style="margin-bottom:4px">Habitat Sizes${sizes.length > 1 ? ' <span style="font-weight:400;font-size:0.7rem;color:var(--text-dim)">(highest requirement across selected animals)</span>' : ''}</div>
+      <table class="size-table">
+        <tr class="size-row" style="border-bottom:1px solid var(--border);padding-bottom:4px">
+          <th class="size-td-label" style="padding-bottom:5px"></th>
+          <th class="size-td-val" style="font-size:0.62rem;letter-spacing:0.08em;color:var(--gold-dim);font-weight:600;text-align:right;padding-bottom:5px">LAND</th>
+          <th class="size-td-val size-aquatic" style="font-size:0.62rem;letter-spacing:0.08em;font-weight:600;text-align:right;padding-bottom:5px">AQUATIC</th>
+          <th class="size-td-val" style="font-size:0.62rem;letter-spacing:0.08em;color:var(--gold-dim);font-weight:600;text-align:right;padding-bottom:5px">TOTAL</th>
+        </tr>
+        ${TIERS.map((t, i) => sizeRow(labels[i], combined[t])).join('')}
+      </table>`;
+  }
 
   return `<div class="terrain-section">
     <div class="selected-header">Terrain <span style="font-size:0.72rem;font-weight:400;color:var(--text-dim)">(combined viable range)</span></div>
@@ -1032,6 +1171,7 @@ function renderTerrainSection(sel) {
     <hr class="terrain-divider">
     <div class="selected-header" style="margin-bottom:4px">Plant Coverage</div>
     ${barRow('Plants','#2d7a3a',plantRange.cMin,plantRange.cMax)}
+    ${tempSection}
     ${barrierSection}
     ${enclosureSection}
   </div>`;
@@ -1089,6 +1229,32 @@ function isCompatibleWith(animal) {
       if (cMin > cMax) return false;
     }
   }
+  if (!options.allowIncompatTemp && !animal.exhibit) {
+    const testSel = [...getSelectedAnimals().filter(a => !a.exhibit), animal];
+    if (testSel.length > 1) {
+      const tr = getCombinedTempRange(testSel);
+      if (tr && tr.conflict) return false;
+    }
+  }
+  if (!options.allowIncompatPredator && !animal.exhibit) {
+    const testSel = getSelectedAnimals().filter(a => !a.exhibit);
+    if (testSel.length) {
+      if (animal.isPredator) {
+        const pl = trophicNum(animal.trophicLevel);
+        const wouldPreyOn = testSel.some(a =>
+          !a.isPredator && !a.wellDefended &&
+          pl > trophicNum(a.trophicLevel)
+        );
+        if (wouldPreyOn) return false;
+      } else if (!animal.isPredator && !animal.wellDefended) {
+        const preyLevel = trophicNum(animal.trophicLevel);
+        if (testSel.some(a => a.isPredator && trophicNum(a.trophicLevel) > preyLevel)) return false;
+      }
+      if (animal.temperament === 'Aggressive' && trophicNum(animal.trophicLevel) >= 25) {
+        if (testSel.some(a => a.id !== animal.id && a.temperament === 'Aggressive' && trophicNum(a.trophicLevel) >= 25)) return false;
+      }
+    }
+  }
   return true;
 }
 
@@ -1101,6 +1267,22 @@ function passesFilters(animal) {
   if (searchQuery) {
     const q = searchQuery.toLowerCase();
     if (!animal.name.toLowerCase().includes(q) && !animal.latin.toLowerCase().includes(q)) return false;
+  }
+  if (activeTraits.size) {
+    const checks = {
+      interactable: () => !!animal.guestWalk,
+      climber:      () => !!animal.climber,
+      swimmer:      () => !!animal.canSwim,
+      deepDiver:    () => !!animal.deepDiver,
+      burrower:     () => !!animal.burrower,
+      predator:     () => !!animal.isPredator,
+      prey:         () => !animal.isPredator && !animal.wellDefended,
+      passive:      () => animal.temperament === 'Passive',
+      aggressive:   () => animal.temperament === 'Aggressive',
+    };
+    for (const t of activeTraits) {
+      if (checks[t] && !checks[t]()) return false;
+    }
   }
   return true;
 }
@@ -1115,6 +1297,7 @@ function renderFilters() {
     ['allowIncompatTemp','Allow Incompatible Temperature'],
     ['allowIncompatTerrain','Allow Incompatible Terrain'],
     ['allowIncompatCoverage','Allow Incompatible Coverage'],
+    ['allowIncompatPredator','Allow Predators with Prey'],
     ['hideIncompat','Hide Incompatible Animals'],
     ['includeExhibit','Include Exhibit Animals'],
     ['showOnlyEnrichment','Show Only Enrichment Matches'],
@@ -1176,6 +1359,23 @@ function renderFilters() {
     });
   });
 
+  // Traits
+  const TRAIT_DEFS = [
+    ['interactable','Interactable'],['climber','Climber'],['swimmer','Swimmer'],
+    ['deepDiver','Deep Diver'],['burrower','Burrower'],['predator','Predator'],
+    ['prey','Prey'],['passive','Passive'],['aggressive','Aggressive'],
+  ];
+  document.getElementById('trait-filters').innerHTML = TRAIT_DEFS.map(([k,label]) =>
+    `<span class="tag ${activeTraits.has(k)?'active':''}" data-trait="${k}">${label}</span>`
+  ).join('');
+  document.querySelectorAll('[data-trait]').forEach(el => {
+    el.addEventListener('click', () => {
+      const t = el.dataset.trait;
+      activeTraits.has(t) ? activeTraits.delete(t) : activeTraits.add(t);
+      renderAll();
+    });
+  });
+
   // Continents
   document.getElementById('continent-filters').innerHTML = CONTINENTS.map(c => {
     const cls = CONTINENT_COLORS[c] || '';
@@ -1218,16 +1418,26 @@ function renderAnimalList() {
     const enrichMatch = getEnrichmentMatch(animal, sel);
     const heartCls = enrichMatch === 'mutual' ? 'mutual' : enrichMatch === 'one-way' ? 'one-way' : '';
     const heartTitle = enrichMatch === 'mutual' ? 'Mutual enrichment' : enrichMatch === 'one-way' ? 'One-way enrichment' : 'Has enrichment partners';
+    const traitChips = [
+      animal.isPredator     ? '<span class="tc tc-pred">Pred</span>'   : '',
+      animal.wellDefended   ? '<span class="tc tc-defended">Def</span>'   : '',
+      animal.climber        ? '<span class="tc tc-climb">Climb</span>'  : '',
+      animal.canSwim        ? '<span class="tc tc-swim">Swim</span>'    : '',
+      animal.deepDiver      ? '<span class="tc tc-dive">Dive</span>'    : '',
+      animal.burrower       ? '<span class="tc tc-burrow">Burrow</span>': '',
+      animal.temperament === 'Aggressive' ? '<span class="tc tc-aggr">Aggr</span>' : '',
+      animal.guestWalk      ? '<span class="tc tc-interact">Interact</span>' : '',
+    ].filter(Boolean).join('');
     return `
       <div class="animal-item ${isSelected?'selected':''} ${incompatCls} ${exhibitCls}" data-id="${animal.id}" title="${animal.exhibit?'Exhibit animal':''}">
         <img class="animal-img-thumb" src="${getImgUrl(animal)}" alt="${animal.name}" loading="lazy" onerror="this.src='data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 36 36%22><rect fill=%22%231c2330%22 width=%2236%22 height=%2236%22/><text x=%2218%22 y=%2224%22 font-size=%2218%22 text-anchor=%22middle%22>🐾</text></svg>'">
         <div class="animal-name-block">
           <div class="animal-common">${animal.name}</div>
           <div class="animal-latin">${animal.latin}${animal.landMin ? `<span class="land-chip">${animal.landMin}m²</span>` : ''}</div>
+          ${traitChips ? `<div class="animal-traits">${traitChips}</div>` : ''}
         </div>
         <div class="animal-icons">
           ${animal.enrichedBy.length ? `<span class="icon-heart ${heartCls}" title="${heartTitle}">♥</span>` : ''}
-          ${animal.guestWalk ? '<span class="icon-shoe" title="Guests can walk through">👣</span>' : ''}
         </div>
       </div>
     `;
@@ -1308,11 +1518,11 @@ function renderRightPanel() {
         </div>
       </div>
       <div class="req-card">
-        <div class="req-card-title">Guest Walkthrough</div>
+        <div class="req-card-title">Guest Interactable</div>
         <div class="req-badges">
-          ${guestWalkAll ? '<span class="req-badge compatible">✓ All animals allow guests</span>'
-            : guestWalkSome ? '<span class="req-badge warn">⚡ Some animals allow guests</span>'
-            : '<span class="req-badge" style="background:rgba(80,80,80,0.2);border:1px solid rgba(120,120,120,0.3);color:var(--text-dim)">✗ No walkthrough</span>'}
+          ${guestWalkAll ? '<span class="req-badge compatible">✓ All animals interactable</span>'
+            : guestWalkSome ? '<span class="req-badge warn">⚡ Some animals interactable</span>'
+            : '<span class="req-badge" style="background:rgba(80,80,80,0.2);border:1px solid rgba(120,120,120,0.3);color:var(--text-dim)">✗ Not interactable</span>'}
         </div>
       </div>
       ${enrichmentGroups.length ? `
@@ -1351,7 +1561,7 @@ function renderRightPanel() {
             <div class="habitat-chips">
               ${animal.continents.map(c => `<span class="habitat-chip hc-continent">${c}</span>`).join('')}
               ${animal.biomes.map(b => `<span class="habitat-chip hc-biome">${b}</span>`).join('')}
-              ${animal.guestWalk ? '<span class="guest-walkthrough-badge">👣 Walkthrough</span>' : ''}
+              ${animal.guestWalk ? '<span class="guest-walkthrough-badge">✋ Interactable</span>' : ''}
             </div>
           </div>
           <button class="remove-btn" data-remove="${animal.id}" title="Remove">✕</button>
@@ -1485,7 +1695,33 @@ function renderSelectedPanel() {
   panel.innerHTML = `
     <div class="panel-title">Selected Animals <span class="count-badge">${sel.length}</span></div>
     <div class="selected-animals">
-      ${sel.map(animal => `
+      ${sel.map(animal => {
+        const sz = computeAnimalSizes(animal);
+        const sizeHtml = sz ? (() => {
+          function fmt(tier, label) {
+            const l = tier.land, q = tier.aquatic;
+            const val = q > 0 ? `${l.toLocaleString()} <span class="sa-size-aquatic">+${q.toLocaleString()} aq</span>` : `${l.toLocaleString()}m²`;
+            return `<span class="sa-size-item"><span class="sa-size-label">${label}</span><span class="sa-size-val">${val}</span></span>`;
+          }
+          const parts = [
+            fmt(sz.individual, 'Individual'),
+            sz.adultMinGroup.land !== sz.individual.land ? fmt(sz.adultMinGroup, `Adults ×${sz.adultsMin}`) : '',
+            sz.familyMin.land !== sz.adultMinGroup.land  ? fmt(sz.familyMin, 'Min family') : '',
+            fmt(sz.familyMax, 'Max family'),
+          ].filter(Boolean).join('');
+          return `<div class="sa-sizes">${parts}</div>`;
+        })() : '';
+        const traitChips = [
+          animal.isPredator   ? '<span class="tc tc-pred">Predator</span>' : '',
+          animal.wellDefended ? '<span class="tc tc-defended">Well Defended</span>' : '',
+          animal.climber      ? '<span class="tc tc-climb">Climber</span>' : '',
+          animal.canSwim      ? '<span class="tc tc-swim">Swimmer</span>' : '',
+          animal.deepDiver    ? '<span class="tc tc-dive">Deep Diver</span>' : '',
+          animal.burrower     ? '<span class="tc tc-burrow">Burrower</span>' : '',
+          animal.temperament === 'Aggressive' ? '<span class="tc tc-aggr">Aggressive</span>' : '',
+          animal.guestWalk    ? '<span class="tc tc-interact">Interactable</span>' : '',
+        ].filter(Boolean).join('');
+        return `
         <div class="selected-animal-card">
           <img class="selected-animal-img" src="${getImgUrl(animal)}" alt="${animal.name}" loading="lazy" onerror="this.src='data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 52 52%22><rect fill=%22%231c2330%22 width=%2252%22 height=%2252%22/><text x=%2226%22 y=%2234%22 font-size=%2228%22 text-anchor=%22middle%22>🐾</text></svg>'">
           <div class="selected-animal-info">
@@ -1494,12 +1730,13 @@ function renderSelectedPanel() {
             <div class="habitat-chips">
               ${animal.continents.map(c => `<span class="habitat-chip hc-continent">${c}</span>`).join('')}
               ${animal.biomes.map(b => `<span class="habitat-chip hc-biome">${b}</span>`).join('')}
-              ${animal.guestWalk ? '<span class="guest-walkthrough-badge">👣 Walkthrough</span>' : ''}
             </div>
+            ${traitChips ? `<div class="animal-traits" style="margin-top:5px">${traitChips}</div>` : ''}
+            ${sizeHtml}
           </div>
           <button class="remove-btn" data-remove="${animal.id}" title="Remove">✕</button>
-        </div>
-      `).join('')}
+        </div>`;
+      }).join('')}
     </div>
   `;
 
@@ -1543,11 +1780,13 @@ function renderEnclosurePanel() {
 
   const guestWalkAll = sel.every(a => a.guestWalk);
   const guestWalkSome = sel.some(a => a.guestWalk);
+  const predWarnings = getPredatorWarnings(sel);
 
   panel.innerHTML = `
     <div class="panel-title">Habitat Requirements <span style="font-size:0.8rem;font-weight:400;color:var(--text-dim)">(${sel.length} animal${sel.length!==1?'s':''})</span></div>
 
     ${warnings.map(w => `<div class="compat-warning">⚠ ${w}</div>`).join('')}
+    ${predWarnings.map(w => `<div class="compat-warning">${w}</div>`).join('')}
 
     <div class="req-grid">
       <div class="req-card">
@@ -1569,11 +1808,11 @@ function renderEnclosurePanel() {
         </div>
       </div>
       <div class="req-card">
-        <div class="req-card-title">Guest Walkthrough</div>
+        <div class="req-card-title">Guest Interactable</div>
         <div class="req-badges">
-          ${guestWalkAll ? '<span class="req-badge compatible">✓ All animals allow guests</span>'
-            : guestWalkSome ? '<span class="req-badge warn">⚡ Some animals allow guests</span>'
-            : '<span class="req-badge" style="background:rgba(80,80,80,0.2);border:1px solid rgba(120,120,120,0.3);color:var(--text-dim)">✗ No walkthrough</span>'}
+          ${guestWalkAll ? '<span class="req-badge compatible">✓ All animals interactable</span>'
+            : guestWalkSome ? '<span class="req-badge warn">⚡ Some animals interactable</span>'
+            : '<span class="req-badge" style="background:rgba(80,80,80,0.2);border:1px solid rgba(120,120,120,0.3);color:var(--text-dim)">✗ Not interactable</span>'}
         </div>
       </div>
       ${enrichmentGroups.length ? `

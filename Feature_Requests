@@ -1,14 +1,6 @@
-Habitat sizing notes
-Monogany (1-1), Polyandry (1 Breeding female), Polygyny (1 Breeding male)
-Minimum family group = minimum adults (at least 2) + (max breeding females in smallest group * max litter size)
-Largest family group = max adults + (max breeding females * max litter size)
-Useful outputs: Minimimum habitat size for individual, smallest non-breeding group of adults, smallest family from above, largest family group
-Add in compatibility checks around predators and the hippo/rhino stuff and tortoise.
-Add in compatibility check and output comfortable temperature.
 Change the font to a serif font that has small serifs.
 Output this info too:
 Attitude	Guests can enter	Animal Encounters	Approx. appeal ◊	Cost to feed per year (G1)	SCORE for cost to appeal ratio *	Climber	Can swim	Deep diver	Burrower	Interspecies bonus Δ	Interaction with other animals	Sleeping pattern
-Habitat size also needs to account for water required as well as land, e.g. Hippo group needs ~2000m3 of both, for a total enclosure size of ~4000m3
+
 Walkable and interactable are different things, and should be shown and calculated separately. Change the current walkable to interactable.
-Add in filters for Interactable, Climber, Swimmer, Deep Diver, Burrower, Predator, Prey
 Add in filters for Sleeping Pattern, Attitude, Walkable (when extraction has returns these values)
