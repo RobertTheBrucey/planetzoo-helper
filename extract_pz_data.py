@@ -97,6 +97,39 @@ CONTINENT_NAME_MAP = {
     # Arctic and Antarctic have no app equivalent — skip them
 }
 
+IUCN_CODE_MAP = {
+    # Full English names (lowercase)
+    "extinct":                "EX",
+    "extinct in the wild":    "EW",
+    "critically endangered":  "CR",
+    "endangered":             "EN",
+    "vulnerable":             "VU",
+    "near threatened":        "NT",
+    "least concern":          "LC",
+    "data deficient":         "DD",
+    "not evaluated":          "NE",
+    "not assessed":           "NE",
+    # CamelCase game enum strings (lowercased for lookup)
+    "extinctinwild":          "EW",
+    "criticallyendangered":   "CR",
+    "nearthreatened":         "NT",
+    "leastconcern":           "LC",
+    "datadeficient":          "DD",
+    "notevaluated":           "NE",
+    "notassessed":            "NE",
+    # "Domesticated" is not an IUCN category — omitted intentionally
+}
+
+
+def normalise_iucn(raw: str) -> str:
+    """Convert a full IUCN name or raw code string to a 2-letter code."""
+    if not raw:
+        return ""
+    lower = raw.strip().lower()
+    if lower in ("ex", "ew", "cr", "en", "vu", "nt", "lc", "dd", "ne"):
+        return lower.upper()
+    return IUCN_CODE_MAP.get(lower, "")
+
 
 def camel_to_display(name: str) -> str:
     """Convert CamelCase game ID to a display name: 'SnowLeopard' → 'Snow Leopard'."""
@@ -154,6 +187,17 @@ def extract_loc_files(cobra_tools: Path, loc_ovl: Path, out_dir: Path) -> None:
         print(f"  WARNING: loc extraction may have failed for {loc_ovl}")
 
 
+_KNOWN_ZOOPEDIA_PREFIXES = {
+    "zoopedia_scientificname_",
+    "zoopedia_barrierrequirementsdescription_",
+    "zoopedia_sleepingpattern_",
+    "zoopedia_activitypattern_",
+}
+
+# Populated on the first run that encounters unknown prefixes; printed in extract_all.
+_unknown_zoopedia_prefixes: set[str] = set()
+
+
 def parse_loc_data(loc_dir: Path) -> dict:
     """
     Scan extracted localisation txt files and return data keyed by game_id_lower.
@@ -162,6 +206,7 @@ def parse_loc_data(loc_dir: Path) -> dict:
       name   — from animal_{gid}.txt (display name with correct punctuation)
       latin  — from zoopedia_scientificname_{gid}.txt
       barrier — from zoopedia_barrierrequirementsdescription_{gid}.txt
+      sleepingPattern — from zoopedia_sleepingpattern_{gid}.txt (or activitypattern)
 
     game_id_lower is game_id.lower() with no other transformation, e.g.
     AlpineGoat → alpinegoat.  Animal name files (not plural/sign variants) have
@@ -199,6 +244,35 @@ def parse_loc_data(loc_dir: Path) -> dict:
                     "grade":  int(m.group(1)),
                     "height": float(m.group(2)),
                 }
+
+        elif stem.startswith("zoopedia_dominance_"):
+            gid_lower = stem[len("zoopedia_dominance_"):]
+            result.setdefault(gid_lower, {})["dominance"] = content.strip()
+
+        elif stem.startswith("zoopedia_sleepingpattern_"):
+            gid_lower = stem[len("zoopedia_sleepingpattern_"):]
+            result.setdefault(gid_lower, {})["sleepingPattern"] = content.strip()
+
+        elif stem.startswith("zoopedia_activitypattern_"):
+            gid_lower = stem[len("zoopedia_activitypattern_"):]
+            result.setdefault(gid_lower, {}).setdefault("sleepingPattern", content.strip())
+
+        elif stem.startswith("zoopedia_conservationstatus_"):
+            gid_lower = stem[len("zoopedia_conservationstatus_"):]
+            code = normalise_iucn(content)
+            if code:
+                result.setdefault(gid_lower, {})["iucn"] = code
+
+        elif stem.startswith("zoopedia_"):
+            # Collect unknown zoopedia prefixes to help discover the right field names.
+            # Strip the trailing animal ID (no underscores in a game ID) to get the prefix.
+            parts = stem.split("_")
+            # zoopedia_<word>_<gid> — the prefix is everything up to the last segment
+            # that has no underscore (the gid portion).  Simplest heuristic: find the
+            # last "_"-separated chunk that could be a gid (all lowercase, no digits).
+            # Instead, just record the full stem up to the second-to-last word.
+            prefix = "_".join(parts[:-1]) + "_" if len(parts) > 2 else stem
+            _unknown_zoopedia_prefixes.add(prefix)
 
     return result
 
@@ -424,6 +498,48 @@ def query_barrier(conn: sqlite3.Connection) -> dict:
     return out
 
 
+def query_iucn(conn: sqlite3.Connection) -> dict:
+    """
+    zoopedia.fdb → IUCN conservation status code per animal.
+
+    SpeciesZoopediaData.ConservationStatus stores a CamelCase string matching
+    the ConservationStatuses enum (e.g. 'CriticallyEndangered', 'LeastConcern').
+    'Domesticated' is not an IUCN category and is skipped.
+    Returns dict of species game ID → 2-letter code (e.g. 'VU').
+    """
+    if table_exists(conn, "SpeciesZoopediaData"):
+        cols = get_table_columns(conn, "SpeciesZoopediaData")
+        if "Species" in cols and "ConservationStatus" in cols:
+            out = {}
+            for row in conn.execute(
+                "SELECT Species, ConservationStatus FROM SpeciesZoopediaData"
+                " WHERE ConservationStatus IS NOT NULL"
+            ):
+                code = normalise_iucn(str(row[1]))
+                if code:
+                    out[row[0]] = code
+            return out
+    # Fallback for older/alternate game versions
+    for table, type_col, status_col in [
+        ("ConservationStatus",       "Species",    "Status"),
+        ("ConservationStatus",       "AnimalType", "Status"),
+        ("AnimalConservationStatus", "AnimalType", "Status"),
+    ]:
+        if not table_exists(conn, table):
+            continue
+        cols = get_table_columns(conn, table)
+        if type_col not in cols or status_col not in cols:
+            continue
+        out = {}
+        for row in conn.execute(f"SELECT {type_col}, {status_col} FROM {table}"):
+            code = normalise_iucn(str(row[1]) if row[1] else "")
+            if code:
+                out[row[0]] = code
+        if out:
+            return out
+    return {}
+
+
 def query_biome_prefs(conn: sqlite3.Connection) -> dict:
     """AnimalBiomePreferences → dict of game_id → list of app biome names."""
     if not table_exists(conn, "AnimalBiomePreferences"):
@@ -609,6 +725,16 @@ def query_behaviors(conn: sqlite3.Connection) -> dict:
     """
     if not table_exists(conn, "IdleBehaviourWeights"):
         return {}
+
+    cols = get_table_columns(conn, "IdleBehaviourWeights")
+    _known_behavior_cols = {
+        "AnimalType", "ActionWeightClimbing", "ActionWeightInWater",
+        "ActionWeightDeepSwim", "ActionWeightInBurrow",
+    }
+    unknown = cols - _known_behavior_cols
+    if unknown:
+        print(f"  NOTE: IdleBehaviourWeights extra columns: {sorted(unknown)}")
+
     out: dict[str, dict] = {}
     try:
         for row in conn.execute(
@@ -630,6 +756,49 @@ def query_behaviors(conn: sqlite3.Connection) -> dict:
                 e["burrower"]  = True
     except sqlite3.OperationalError as exc:
         print(f"  NOTE: IdleBehaviourWeights query error: {exc}")
+    return out
+
+
+def query_sleep_pattern(conn: sqlite3.Connection) -> dict:
+    """
+    SleepVariables → sleeping pattern (Diurnal / Nocturnal / Crepuscular) per animal.
+
+    Column names are discovered at runtime since they vary across game versions.
+    """
+    if not table_exists(conn, "SleepVariables"):
+        return {}
+    cols = get_table_columns(conn, "SleepVariables")
+    print(f"  NOTE: SleepVariables columns: {sorted(cols)}")
+
+    # Find the AnimalType column (always present under one of these names).
+    type_col = next((c for c in ("AnimalType", "Species", "Animal") if c in cols), None)
+    if type_col is None:
+        print(f"  NOTE: SleepVariables — cannot find animal ID column in {sorted(cols)}")
+        return {}
+
+    # Find the sleeping pattern / activity column.
+    pattern_col = next(
+        (c for c in (
+            "SleepingPattern", "ActivityPattern", "ActivityTime",
+            "DiurnalPattern", "Pattern", "Activity",
+        ) if c in cols),
+        None,
+    )
+    if pattern_col is None:
+        # Print a sample row so the user can see what's available.
+        try:
+            row = conn.execute(f"SELECT * FROM SleepVariables LIMIT 1").fetchone()
+            if row:
+                print(f"  NOTE: SleepVariables sample row: {dict(row)}")
+        except sqlite3.Error:
+            pass
+        return {}
+
+    out = {}
+    for row in conn.execute(f"SELECT {type_col}, {pattern_col} FROM SleepVariables"):
+        val = row[1]
+        if val:
+            out[row[0]] = str(val)
     return out
 
 
@@ -748,6 +917,7 @@ def format_js_entry(animal: dict, loc_map: dict) -> str:
     name   = loc.get("name") or camel_to_display(game_id)
     app_id = display_to_app_id(name)
     pack   = animal.get("pack", "Unknown")
+    iucn   = animal.get("iucn", "")
     exhibit      = animal.get("exhibit", False)
     interactable = animal.get("interactable", False)
     walkable     = animal.get("walkable", False)
@@ -785,7 +955,7 @@ def format_js_entry(animal: dict, loc_map: dict) -> str:
     if exhibit:
         return (
             f"  {{id:'{app_id}',name:{js_str(name)},latin:'{latin}',"
-            f"pack:'{pack}',continents:{conts_js},biomes:{biomes_js},"
+            f"pack:'{pack}',iucn:'{iucn}',continents:{conts_js},biomes:{biomes_js},"
             f"img:'{img}',enrichedBy:[],interactable:false,walkable:false,exhibit:true,"
             f"terrain:{{grassS:[0,100],grassL:[0,100],soil:[0,100],rock:[0,100],sand:[0,100],snow:[0,100]}},"
             f"plants:[0,100]}},"
@@ -817,7 +987,8 @@ def format_js_entry(animal: dict, loc_map: dict) -> str:
     is_pred       = animal.get("isPredator", False)
     well_defended = animal.get("wellDefended", False)
     trophic       = animal.get("adultTrophicLevel", "")
-    temperament   = animal.get("temperament", "")
+    temperament      = animal.get("temperament", "")
+    sleeping_pattern = animal.get("sleepingPattern", "")
     climber       = animal.get("climber",   False)
     can_swim      = animal.get("canSwim",   False)
     deep_diver    = animal.get("deepDiver", False)
@@ -841,7 +1012,7 @@ def format_js_entry(animal: dict, loc_map: dict) -> str:
 
     return (
         f"  {{id:'{app_id}',name:{js_str(name)},latin:'{latin}',"
-        f"pack:'{pack}',continents:{conts_js},biomes:{biomes_js},"
+        f"pack:'{pack}',iucn:'{iucn}',continents:{conts_js},biomes:{biomes_js},"
         f"img:'{img}',enrichedBy:{enriched_js},interactable:{tf(interactable)},walkable:{tf(walkable)},"
         f"exhibit:false,terrain:{terrain_js},"
         f"plants:{rng(plants)},"
@@ -857,7 +1028,7 @@ def format_js_entry(animal: dict, loc_map: dict) -> str:
         f"maxMalesSingle:{js_opt_num(max_m_single)},maxFemalesSingle:{js_opt_num(max_f_single)},"
         f"maxMalesBoth:{js_opt_num(max_m_both)},maxFemalesBoth:{js_opt_num(max_f_both)},"
         f"isPredator:{tf(is_pred)},wellDefended:{tf(well_defended)},"
-        f"trophicLevel:'{trophic}',temperament:'{temperament}',"
+        f"trophicLevel:'{trophic}',temperament:'{temperament}',sleepingPattern:'{sleeping_pattern}',"
         f"climber:{tf(climber)},canSwim:{tf(can_swim)},deepDiver:{tf(deep_diver)},burrower:{tf(burrower)},"
         f"barrier:{barrier_js}}},"
     )
@@ -894,6 +1065,8 @@ def extract_all(cobra_tools: Path, game_dir: Path, extract_root: Path) -> tuple[
     gender_ratio_map:    dict[str, dict]  = {}  # maxMales/FemalesSingle/Both
     interspecies_map:    dict[str, dict]  = {}  # per-animal predation profile
     behavior_map:        dict[str, dict]  = {}  # climber/canSwim/deepDiver/burrower
+    sleep_pattern_map:   dict[str, str]   = {}  # game_id → sleeping pattern string
+    iucn_map:            dict[str, str]   = {}  # game_id → IUCN 2-letter code
     loc_map:             dict[str, dict]  = {}  # game_id_lower → {name, latin, barrier}
 
     for content_dir in content_dirs:
@@ -941,8 +1114,10 @@ def extract_all(cobra_tools: Path, game_dir: Path, extract_root: Path) -> tuple[
                         for k in ("climber", "canSwim", "deepDiver", "burrower"):
                             entry[k] = entry[k] or data.get(k, False)
                     # isPredator is derived from InterspeciesInteractionData.PredatorPrey
+                    sleep_pattern_map.update(query_sleep_pattern(conn))
                 elif fname.endswith("zoopedia.fdb"):
                     barrier_map.update(query_barrier(conn))
+                    iucn_map.update(query_iucn(conn))
                 elif fname.endswith("exhibits.fdb"):
                     exhibit_set.update(query_exhibits(conn))
                     definitions.update(query_definitions(conn))
@@ -1043,6 +1218,7 @@ def extract_all(cobra_tools: Path, game_dir: Path, extract_root: Path) -> tuple[
             record["adultTrophicLevel"]    = pred_data.get("adultTrophicLevel", "")
             record["juvenileTrophicLevel"] = pred_data.get("juvenileTrophicLevel", "")
             record["temperament"]          = pred_data.get("temperament", "")
+            record["sleepingPattern"]      = sleep_pattern_map.get(game_id, "")
             # wellDefended: LevelApex prey cannot be killed by any predator (e.g. tortoises)
             record["wellDefended"]         = pred_data.get("adultTrophicLevel") == "LevelApex"
             record["hasDefensiveIntimidate"] = pred_data.get("hasDefensiveIntimidate", False)
@@ -1053,6 +1229,12 @@ def extract_all(cobra_tools: Path, game_dir: Path, extract_root: Path) -> tuple[
             record["deepDiver"]            = beh_data.get("deepDiver", False)
             record["burrower"]             = beh_data.get("burrower",  False)
             record["barrier"]              = barrier_map.get(game_id, {})
+
+        gid_lower = game_id.lower()
+        record["iucn"] = (
+            iucn_map.get(game_id)
+            or loc_map.get(gid_lower, {}).get("iucn", "")
+        )
 
         animals[game_id] = record
 
@@ -1162,6 +1344,13 @@ def main():
 
     js_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
     print(f"Wrote JS entries to {js_path}")
+
+    # Report unknown zoopedia loc prefixes — helps discover sleeping pattern / attitude field names.
+    if _unknown_zoopedia_prefixes:
+        print(f"\nUnknown zoopedia loc prefixes found ({len(_unknown_zoopedia_prefixes)}):")
+        for p in sorted(_unknown_zoopedia_prefixes):
+            print(f"  {p}")
+        print("  -> Check these for sleeping pattern / attitude data and update parse_loc_data.")
 
     # Report animals with no barrier data after both FDB and loc sources
     missing_barrier = [

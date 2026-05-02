@@ -818,8 +818,32 @@
   .tc-climb    { background: rgba(150,80,200,0.15); border: 1px solid rgba(150,80,200,0.3);  color: #a060d0; }
   .tc-burrow   { background: rgba(140,90,40,0.2);   border: 1px solid rgba(140,90,40,0.4);   color: #c08050; }
   .tc-aggr     { background: rgba(200,120,20,0.15); border: 1px solid rgba(200,120,20,0.35); color: #d09030; }
+  .tc-pass     { background: rgba(60,160,60,0.15);  border: 1px solid rgba(60,160,60,0.3);   color: #60c060; }
   .tc-interact { background: rgba(155,108,217,0.15);border: 1px solid rgba(155,108,217,0.3); color: #c49de0; }
   .tc-walk     { background: rgba(30,160,130,0.15); border: 1px solid rgba(30,160,130,0.3);  color: #50c8a8; }
+  .tc-noct     { background: rgba(50,50,180,0.15);  border: 1px solid rgba(50,50,180,0.3);   color: #6070d0; }
+  .tc-diur     { background: rgba(220,170,20,0.15); border: 1px solid rgba(220,170,20,0.3);  color: #d4aa30; }
+  .tc-crep     { background: rgba(200,100,150,0.15);border: 1px solid rgba(200,100,150,0.3); color: #d080a0; }
+
+  /* IUCN Red List badge */
+  .iucn {
+    padding: 1px 5px;
+    border-radius: 2px;
+    font-size: 0.6rem;
+    font-family: 'Cinzel', serif;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    flex-shrink: 0;
+  }
+  .iucn-EX { background: rgba(40,40,40,0.6);    border: 1px solid #555;                    color: #888; }
+  .iucn-EW { background: rgba(84,35,68,0.3);    border: 1px solid rgba(130,60,110,0.5);    color: #c080a0; }
+  .iucn-CR { background: rgba(212,0,0,0.2);     border: 1px solid rgba(212,0,0,0.45);      color: #f06060; }
+  .iucn-EN { background: rgba(220,100,30,0.2);  border: 1px solid rgba(220,100,30,0.45);   color: #e07840; }
+  .iucn-VU { background: rgba(210,165,0,0.2);   border: 1px solid rgba(210,165,0,0.45);    color: #d4a820; }
+  .iucn-NT { background: rgba(155,185,30,0.15); border: 1px solid rgba(155,185,30,0.4);    color: #a0bc28; }
+  .iucn-LC { background: rgba(60,160,60,0.15);  border: 1px solid rgba(60,160,60,0.35);    color: #50b050; }
+  .iucn-DD { background: rgba(150,150,150,0.12);border: 1px solid rgba(150,150,150,0.3);   color: #888; }
+  .iucn-NE { background: rgba(80,80,80,0.15);   border: 1px solid rgba(120,120,120,0.3);   color: #666; }
 
   /* Habitat size table in enclosure panel */
   .size-table { width: 100%; font-size: 0.8rem; margin-top: 6px; border-collapse: collapse; }
@@ -871,6 +895,11 @@
       <div class="filter-group">
         <div class="section-title">Traits</div>
         <div class="tag-group" id="trait-filters"></div>
+      </div>
+
+      <div class="filter-group">
+        <div class="section-title">IUCN Status</div>
+        <div class="tag-group" id="iucn-filters"></div>
       </div>
 
       <div class="filter-group">
@@ -937,6 +966,7 @@ const BIOME_COLORS = {
 
 // ===== STATE =====
 let selectedIds = new Set();
+let activeIucn = new Set();
 let activePacks = new Set();
 let activeBiomes = new Set();
 
@@ -1018,6 +1048,17 @@ function getPredatorWarnings(sel) {
   }
   return warnings;
 }
+
+const IUCN_LABELS = {
+  EX:'Extinct', EW:'Extinct in Wild', CR:'Critically Endangered', EN:'Endangered',
+  VU:'Vulnerable', NT:'Near Threatened', LC:'Least Concern', DD:'Data Deficient', NE:'Not Evaluated',
+};
+const IUCN_ORDER = ['EX','EW','CR','EN','VU','NT','LC','DD','NE'];
+const IUCN_DOT = {
+  EX:'#666', EW:'#c080a0', CR:'#f06060', EN:'#e07840',
+  VU:'#d4a820', NT:'#a0bc28', LC:'#50b050', DD:'#888', NE:'#555',
+};
+function iucnLabel(code) { return IUCN_LABELS[code] || code; }
 
 function getImgUrl(animal) {
   if (!animal.img) return 'data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 36 36%22><rect fill=%22%231c2330%22 width=%2236%22 height=%2236%22/><text x=%2218%22 y=%2224%22 font-size=%2218%22 text-anchor=%22middle%22>🐾</text></svg>';
@@ -1270,6 +1311,7 @@ function isCompatibleWith(animal) {
 function passesFilters(animal) {
   if (animal.exhibit && !options.includeExhibit) return false;
   if (activePacks.size && !activePacks.has(animal.pack)) return false;
+  if (activeIucn.size && !activeIucn.has(animal.iucn || '')) return false;
   if (activeContinents.size && !animal.continents.some(c => activeContinents.has(c))) return false;
   if (activeBiomes.size && !animal.biomes.some(b => activeBiomes.has(b))) return false;
   if (enclosureSize !== null && !animal.exhibit && animal.landMin > enclosureSize) return false;
@@ -1289,6 +1331,9 @@ function passesFilters(animal) {
       prey:         () => !animal.isPredator && !animal.wellDefended,
       passive:      () => animal.temperament === 'Passive',
       aggressive:   () => animal.temperament === 'Aggressive',
+      nocturnal:    () => animal.sleepingPattern === 'Nocturnal',
+      diurnal:      () => animal.sleepingPattern === 'Diurnal',
+      crepuscular:  () => animal.sleepingPattern === 'Crepuscular',
     };
     for (const t of activeTraits) {
       if (checks[t] && !checks[t]()) return false;
@@ -1374,6 +1419,7 @@ function renderFilters() {
     ['walkable','Walkable'],['interactable','Interactable'],['climber','Climber'],['swimmer','Swimmer'],
     ['deepDiver','Deep Diver'],['burrower','Burrower'],['predator','Predator'],
     ['prey','Prey'],['passive','Passive'],['aggressive','Aggressive'],
+    ['nocturnal','Nocturnal'],['diurnal','Diurnal'],['crepuscular','Crepuscular'],
   ];
   document.getElementById('trait-filters').innerHTML = TRAIT_DEFS.map(([k,label]) =>
     `<span class="tag ${activeTraits.has(k)?'active':''}" data-trait="${k}">${label}</span>`
@@ -1382,6 +1428,20 @@ function renderFilters() {
     el.addEventListener('click', () => {
       const t = el.dataset.trait;
       activeTraits.has(t) ? activeTraits.delete(t) : activeTraits.add(t);
+      renderAll();
+    });
+  });
+
+  // IUCN status
+  const availableIucn = IUCN_ORDER.filter(code => ANIMALS.some(a => a.iucn === code));
+  document.getElementById('iucn-filters').innerHTML = availableIucn.map(code => `
+    <span class="tag ${activeIucn.has(code)?'active':''}" data-iucn="${code}" title="${iucnLabel(code)}">
+      <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${IUCN_DOT[code]||'#888'};flex-shrink:0;vertical-align:middle;margin-right:3px"></span>${code}
+    </span>`).join('');
+  document.querySelectorAll('[data-iucn]').forEach(el => {
+    el.addEventListener('click', () => {
+      const c = el.dataset.iucn;
+      activeIucn.has(c) ? activeIucn.delete(c) : activeIucn.add(c);
       renderAll();
     });
   });
@@ -1429,6 +1489,7 @@ function renderAnimalList() {
     const heartCls = enrichMatch === 'mutual' ? 'mutual' : enrichMatch === 'one-way' ? 'one-way' : '';
     const heartTitle = enrichMatch === 'mutual' ? 'Mutual enrichment' : enrichMatch === 'one-way' ? 'One-way enrichment' : 'Has enrichment partners';
     const traitChips = [
+      animal.iucn           ? `<span class="tc iucn iucn-${animal.iucn}" title="IUCN Red List: ${iucnLabel(animal.iucn)}">${animal.iucn}</span>` : '',
       animal.isPredator     ? '<span class="tc tc-pred">Pred</span>'   : '',
       animal.wellDefended   ? '<span class="tc tc-defended">Def</span>'   : '',
       animal.climber        ? '<span class="tc tc-climb">Climb</span>'  : '',
@@ -1436,6 +1497,10 @@ function renderAnimalList() {
       animal.deepDiver      ? '<span class="tc tc-dive">Dive</span>'    : '',
       animal.burrower       ? '<span class="tc tc-burrow">Burrow</span>': '',
       animal.temperament === 'Aggressive' ? '<span class="tc tc-aggr">Aggr</span>' : '',
+      animal.temperament === 'Passive'    ? '<span class="tc tc-pass">Pass</span>' : '',
+      animal.sleepingPattern === 'Nocturnal'   ? '<span class="tc tc-noct">Noct</span>' : '',
+      animal.sleepingPattern === 'Diurnal'     ? '<span class="tc tc-diur">Diur</span>' : '',
+      animal.sleepingPattern === 'Crepuscular' ? '<span class="tc tc-crep">Crep</span>' : '',
       animal.walkable       ? '<span class="tc tc-walk">Walk</span>'      : '',
       animal.interactable   ? '<span class="tc tc-interact">Interact</span>' : '',
     ].filter(Boolean).join('');
@@ -1734,6 +1799,7 @@ function renderSelectedPanel() {
           return `<div class="sa-sizes">${parts}</div>`;
         })() : '';
         const traitChips = [
+          animal.iucn         ? `<span class="tc iucn iucn-${animal.iucn}" title="IUCN Red List: ${iucnLabel(animal.iucn)}">${animal.iucn} — ${iucnLabel(animal.iucn)}</span>` : '',
           animal.isPredator   ? '<span class="tc tc-pred">Predator</span>' : '',
           animal.wellDefended ? '<span class="tc tc-defended">Well Defended</span>' : '',
           animal.climber      ? '<span class="tc tc-climb">Climber</span>' : '',
@@ -1741,6 +1807,10 @@ function renderSelectedPanel() {
           animal.deepDiver    ? '<span class="tc tc-dive">Deep Diver</span>' : '',
           animal.burrower     ? '<span class="tc tc-burrow">Burrower</span>' : '',
           animal.temperament === 'Aggressive' ? '<span class="tc tc-aggr">Aggressive</span>' : '',
+          animal.temperament === 'Passive'    ? '<span class="tc tc-pass">Passive</span>'    : '',
+          animal.sleepingPattern === 'Nocturnal'   ? '<span class="tc tc-noct">Nocturnal</span>'   : '',
+          animal.sleepingPattern === 'Diurnal'     ? '<span class="tc tc-diur">Diurnal</span>'     : '',
+          animal.sleepingPattern === 'Crepuscular' ? '<span class="tc tc-crep">Crepuscular</span>' : '',
           animal.walkable     ? '<span class="tc tc-walk">Walkable</span>'     : '',
           animal.interactable ? '<span class="tc tc-interact">Interactable</span>' : '',
         ].filter(Boolean).join('');
