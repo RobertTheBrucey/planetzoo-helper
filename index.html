@@ -824,6 +824,7 @@
   .tc-noct     { background: rgba(50,50,180,0.15);  border: 1px solid rgba(50,50,180,0.3);   color: #6070d0; }
   .tc-diur     { background: rgba(220,170,20,0.15); border: 1px solid rgba(220,170,20,0.3);  color: #d4aa30; }
   .tc-crep     { background: rgba(200,100,150,0.15);border: 1px solid rgba(200,100,150,0.3); color: #d080a0; }
+  .tc-cath     { background: rgba(80,160,180,0.15); border: 1px solid rgba(80,160,180,0.3);  color: #50b0c8; }
 
   /* IUCN Red List badge */
   .iucn {
@@ -948,6 +949,7 @@
 </html>
 
 <script src="animals.js"></script>
+<script src="animals_manual.js"></script>
 <script>
 // ===== DATA =====
 const CONTINENTS = ['Africa','Asia','Europe','North America','South America','Oceania'];
@@ -1367,6 +1369,7 @@ function passesFilters(animal) {
       nocturnal:    () => animal.sleepingPattern === 'Nocturnal',
       diurnal:      () => animal.sleepingPattern === 'Diurnal',
       crepuscular:  () => animal.sleepingPattern === 'Crepuscular',
+      cathemeral:   () => animal.sleepingPattern === 'Cathemeral',
     };
     for (const t of activeTraits) {
       if (checks[t] && !checks[t]()) return false;
@@ -1453,7 +1456,7 @@ function renderFilters() {
     ['walkable','Walkable'],['interactable','Interactable'],['climber','Climber'],['swimmer','Swimmer'],
     ['deepDiver','Deep Diver'],['burrower','Burrower'],['predator','Predator'],
     ['prey','Prey'],['passive','Passive'],['aggressive','Aggressive'],
-    ['nocturnal','Nocturnal'],['diurnal','Diurnal'],['crepuscular','Crepuscular'],
+    ['nocturnal','Nocturnal'],['diurnal','Diurnal'],['crepuscular','Crepuscular'],['cathemeral','Cathemeral'],
   ];
   document.getElementById('trait-filters').innerHTML = TRAIT_DEFS.map(([k,label]) =>
     `<span class="tag ${activeTraits.has(k)?'active':''}" data-trait="${k}">${label}</span>`
@@ -1535,6 +1538,7 @@ function renderAnimalList() {
       animal.sleepingPattern === 'Nocturnal'   ? '<span class="tc tc-noct">Noct</span>' : '',
       animal.sleepingPattern === 'Diurnal'     ? '<span class="tc tc-diur">Diur</span>' : '',
       animal.sleepingPattern === 'Crepuscular' ? '<span class="tc tc-crep">Crep</span>' : '',
+      animal.sleepingPattern === 'Cathemeral'  ? '<span class="tc tc-cath">Cath</span>' : '',
       animal.walkable       ? '<span class="tc tc-walk">Walk</span>'      : '',
       animal.interactable   ? '<span class="tc tc-interact">Interact</span>' : '',
     ].filter(Boolean).join('');
@@ -1778,6 +1782,15 @@ if (enclosureInput && enclosureClear) {
   });
 }
 
+// Merge MANUAL_DATA overrides into ANIMALS (sleepingPattern and any future fields).
+if (typeof MANUAL_DATA !== 'undefined') {
+  const manualMap = MANUAL_DATA;
+  ANIMALS.forEach(a => {
+    const m = manualMap[a.id];
+    if (m) Object.assign(a, m);
+  });
+}
+
 renderAll();
 
 const BUILD_TIME = '@@BUILD_TIME@@';
@@ -1860,6 +1873,7 @@ function renderSelectedPanel() {
           animal.sleepingPattern === 'Nocturnal'   ? '<span class="tc tc-noct">Nocturnal</span>'   : '',
           animal.sleepingPattern === 'Diurnal'     ? '<span class="tc tc-diur">Diurnal</span>'     : '',
           animal.sleepingPattern === 'Crepuscular' ? '<span class="tc tc-crep">Crepuscular</span>' : '',
+          animal.sleepingPattern === 'Cathemeral'  ? '<span class="tc tc-cath">Cathemeral</span>'  : '',
           animal.walkable     ? '<span class="tc tc-walk">Walkable</span>'     : '',
           animal.interactable ? '<span class="tc tc-interact">Interactable</span>' : '',
         ].filter(Boolean).join('');
