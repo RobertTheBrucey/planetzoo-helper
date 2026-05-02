@@ -364,8 +364,8 @@ def query_definitions(conn: sqlite3.Connection) -> dict:
     }
 
 
-def query_guest_walk(conn: sqlite3.Connection) -> set:
-    """GuestInteractionData → set of animals with guestWalk=true."""
+def query_interactable(conn: sqlite3.Connection) -> set:
+    """GuestInteractionData → set of animals that support Animal Encounters (interactable=true)."""
     if not table_exists(conn, "GuestInteractionData"):
         return set()
     return {
@@ -373,6 +373,18 @@ def query_guest_walk(conn: sqlite3.Connection) -> set:
         for row in conn.execute(
             "SELECT AnimalType, A_CanInteractWith FROM GuestInteractionData"
             " WHERE A_CanInteractWith = 1"
+        )
+    }
+
+
+def query_walkable(conn: sqlite3.Connection) -> set:
+    """EscapeData → set of animals where guests can enter the habitat (GuestsFleeFrom=0)."""
+    if not table_exists(conn, "EscapeData"):
+        return set()
+    return {
+        row["AnimalType"]
+        for row in conn.execute(
+            "SELECT AnimalType FROM EscapeData WHERE GuestsFleeFrom = 0"
         )
     }
 
@@ -736,8 +748,9 @@ def format_js_entry(animal: dict, loc_map: dict) -> str:
     name   = loc.get("name") or camel_to_display(game_id)
     app_id = display_to_app_id(name)
     pack   = animal.get("pack", "Unknown")
-    exhibit = animal.get("exhibit", False)
-    guest   = animal.get("guestWalk", False)
+    exhibit      = animal.get("exhibit", False)
+    interactable = animal.get("interactable", False)
+    walkable     = animal.get("walkable", False)
 
     # All these fields come from game files — no committed reference needed.
     latin = loc.get("latin", "")
@@ -773,7 +786,7 @@ def format_js_entry(animal: dict, loc_map: dict) -> str:
         return (
             f"  {{id:'{app_id}',name:{js_str(name)},latin:'{latin}',"
             f"pack:'{pack}',continents:{conts_js},biomes:{biomes_js},"
-            f"img:'{img}',enrichedBy:[],guestWalk:false,exhibit:true,"
+            f"img:'{img}',enrichedBy:[],interactable:false,walkable:false,exhibit:true,"
             f"terrain:{{grassS:[0,100],grassL:[0,100],soil:[0,100],rock:[0,100],sand:[0,100],snow:[0,100]}},"
             f"plants:[0,100]}},"
         )
@@ -829,7 +842,7 @@ def format_js_entry(animal: dict, loc_map: dict) -> str:
     return (
         f"  {{id:'{app_id}',name:{js_str(name)},latin:'{latin}',"
         f"pack:'{pack}',continents:{conts_js},biomes:{biomes_js},"
-        f"img:'{img}',enrichedBy:{enriched_js},guestWalk:{tf(guest)},"
+        f"img:'{img}',enrichedBy:{enriched_js},interactable:{tf(interactable)},walkable:{tf(walkable)},"
         f"exhibit:false,terrain:{terrain_js},"
         f"plants:{rng(plants)},"
         f"landMin:{land},landMinGroup:{js_opt_num(land_group)},spacePerAdditional:{js_opt_num(spa)},"
@@ -869,7 +882,8 @@ def extract_all(cobra_tools: Path, game_dir: Path, extract_root: Path) -> tuple[
     habitat_map:         dict[str, dict]  = {}  # plants + optional temp
     space_map:           dict[str, dict]  = {}  # land/aquatic/climb/shelter space
     barrier_map:         dict[str, dict]  = {}
-    guest_walk_set:      set[str]         = set()
+    interactable_set:    set[str]         = set()
+    walkable_set:        set[str]         = set()
     enrichment_map:      dict[str, set]   = {}
     definitions:         dict[str, str]   = {}
     exhibit_set:         set[str]         = set()
@@ -904,7 +918,8 @@ def extract_all(cobra_tools: Path, game_dir: Path, extract_root: Path) -> tuple[
                     terrain_map.update(query_terrain(conn))
                     habitat_map.update(query_habitat(conn))
                     space_map.update(query_space(conn))
-                    guest_walk_set.update(query_guest_walk(conn))
+                    interactable_set.update(query_interactable(conn))
+                    walkable_set.update(query_walkable(conn))
                     for animal, partners in query_enrichment(conn).items():
                         enrichment_map.setdefault(animal, set()).update(partners)
                     definitions.update(query_definitions(conn))
@@ -958,7 +973,8 @@ def extract_all(cobra_tools: Path, game_dir: Path, extract_root: Path) -> tuple[
             "pack":                 pack_name,
             "content_pack_raw":     raw_pack,
             "exhibit":              is_exhibit,
-            "guestWalk":            game_id in guest_walk_set,
+            "interactable":         game_id in interactable_set,
+            "walkable":             game_id in walkable_set,
             "enrichedBy":           sorted(enrichment_map.get(game_id, set())),
             "biomes_from_game":     sorted(biome_pref_map.get(game_id, [])),
             "continents_from_game": sorted(continent_pref_map.get(game_id, [])),
