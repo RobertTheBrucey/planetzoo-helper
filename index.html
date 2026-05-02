@@ -1240,6 +1240,7 @@ function isCompatibleWith(animal) {
     const testSel = getSelectedAnimals().filter(a => !a.exhibit);
     if (testSel.length) {
       if (animal.isPredator) {
+        return false;
         const pl = trophicNum(animal.trophicLevel);
         const wouldPreyOn = testSel.some(a =>
           !a.isPredator && !a.wellDefended &&
@@ -1247,7 +1248,7 @@ function isCompatibleWith(animal) {
         );
         if (wouldPreyOn) return false;
       } else if (!animal.isPredator && !animal.wellDefended) {
-        const preyLevel = trophicNum(animal.trophicLevel);
+        const preyLevel = 0;//trophicNum(animal.trophicLevel);
         if (testSel.some(a => a.isPredator && trophicNum(a.trophicLevel) > preyLevel)) return false;
       }
       if (animal.temperament === 'Aggressive' && trophicNum(animal.trophicLevel) >= 25) {
