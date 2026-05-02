@@ -824,6 +824,7 @@
   .tc-noct     { background: rgba(50,50,180,0.15);  border: 1px solid rgba(50,50,180,0.3);   color: #6070d0; }
   .tc-diur     { background: rgba(220,170,20,0.15); border: 1px solid rgba(220,170,20,0.3);  color: #d4aa30; }
   .tc-crep     { background: rgba(200,100,150,0.15);border: 1px solid rgba(200,100,150,0.3); color: #d080a0; }
+  .tc-cath     { background: rgba(80,160,180,0.15); border: 1px solid rgba(80,160,180,0.3);  color: #50b0c8; }
 
   /* IUCN Red List badge */
   .iucn {
@@ -858,6 +859,9 @@
   .sa-size-label { color: var(--text-dim); font-size: 0.65rem; font-family: 'Crimson Pro', serif; }
   .sa-size-val   { color: var(--text-bright); font-weight: 600; }
   .sa-size-aquatic { color: #5aafe0; }
+  .sa-breeding { margin-top: 4px; font-size: 0.72rem; color: var(--text-dim); }
+  .sa-breeding .overlap-count { color: var(--gold-light); font-weight: 600; }
+  .sa-breeding .overlap-missing { color: #666; font-style: italic; }
 </style>
 </head>
 <body>
@@ -945,6 +949,7 @@
 </html>
 
 <script src="animals.js"></script>
+<script src="animals_manual.js"></script>
 <script>
 // ===== DATA =====
 const CONTINENTS = ['Africa','Asia','Europe','North America','South America','Oceania'];
@@ -983,6 +988,7 @@ let options = {
   hideIncompat: true,
   includeExhibit: false,
   showOnlyEnrichment: false,
+  accountForJuvenileOverlap: true,
 };
 let searchQuery = '';
 let enclosureSize = null;
@@ -1013,12 +1019,26 @@ function computeAnimalSizes(animal) {
   function aq(n)   { return aqBase > 0 ? aqBase + aqPer * Math.max(0, n - 1) : 0; }
   const nFamMin = aMin + litMin;
   const nFamMax = aMax + fBoth * litMax;
+
+  // Concurrent juvenile cohorts: how many litter generations can coexist in the enclosure
+  // at maximum (when the oldest juveniles haven't matured by the time the next litter arrives).
+  // Formula: ceil(maturityTime / (gestationTime + interBirthTime))
+  const hasMaturityData = animal.maturityTime != null;
+  let concurrentCohorts = 1;
+  if (hasMaturityData && animal.gestationTime != null && animal.interBirthTime != null) {
+    const cycle = animal.gestationTime + animal.interBirthTime;
+    if (cycle > 0) concurrentCohorts = Math.max(1, Math.ceil(animal.maturityTime / cycle));
+  }
+  const nFamMaxOverlap = aMax + fBoth * litMax * concurrentCohorts;
+
   return {
-    individual:    { land: land(1),       aquatic: aq(1) },
-    adultMinGroup: { land: land(aMin),    aquatic: aq(aMin) },
-    familyMin:     { land: land(nFamMin), aquatic: aq(nFamMin) },
-    familyMax:     { land: land(nFamMax), aquatic: aq(nFamMax) },
+    individual:       { land: land(1),              aquatic: aq(1) },
+    adultMinGroup:    { land: land(aMin),            aquatic: aq(aMin) },
+    familyMin:        { land: land(nFamMin),         aquatic: aq(nFamMin) },
+    familyMax:        { land: land(nFamMax),         aquatic: aq(nFamMax) },
+    familyMaxOverlap: { land: land(nFamMaxOverlap),  aquatic: aq(nFamMaxOverlap) },
     adultsMin: aMin, adultsMax: aMax, fBoth, litMax, litMin,
+    concurrentCohorts, hasMaturityData,
   };
 }
 
@@ -1189,6 +1209,21 @@ function renderTerrainSection(sel) {
       'Min family',
       'Max family',
     ];
+
+    // Concurrent litter overlap row: only shown when toggle is on
+    if (options.accountForJuvenileOverlap) {
+      const overlapSizes = sizes.filter(s => s.hasMaturityData && s.concurrentCohorts > 1);
+      if (overlapSizes.length) {
+        combined.familyMaxOverlap = {
+          land:    Math.max(...overlapSizes.map(s => s.familyMaxOverlap.land)),
+          aquatic: Math.max(...overlapSizes.map(s => s.familyMaxOverlap.aquatic)),
+        };
+        const maxCohorts = Math.max(...overlapSizes.map(s => s.concurrentCohorts));
+        TIERS.push('familyMaxOverlap');
+        labels.push(`Max family (×${maxCohorts} litter cohorts)`);
+      }
+    }
+
     function sizeRow(label, tier) {
       const l = tier.land, q = tier.aquatic, tot = l + q;
       const qs = q > 0 ? q.toLocaleString() : '—';
@@ -1334,6 +1369,7 @@ function passesFilters(animal) {
       nocturnal:    () => animal.sleepingPattern === 'Nocturnal',
       diurnal:      () => animal.sleepingPattern === 'Diurnal',
       crepuscular:  () => animal.sleepingPattern === 'Crepuscular',
+      cathemeral:   () => animal.sleepingPattern === 'Cathemeral',
     };
     for (const t of activeTraits) {
       if (checks[t] && !checks[t]()) return false;
@@ -1356,6 +1392,7 @@ function renderFilters() {
     ['hideIncompat','Hide Incompatible Animals'],
     ['includeExhibit','Include Exhibit Animals'],
     ['showOnlyEnrichment','Show Only Enrichment Matches'],
+    ['accountForJuvenileOverlap','Concurrent Litters'],
   ];
   optRow.innerHTML = optDefs.map(([k,label]) => `
     <label class="toggle-row">
@@ -1419,7 +1456,7 @@ function renderFilters() {
     ['walkable','Walkable'],['interactable','Interactable'],['climber','Climber'],['swimmer','Swimmer'],
     ['deepDiver','Deep Diver'],['burrower','Burrower'],['predator','Predator'],
     ['prey','Prey'],['passive','Passive'],['aggressive','Aggressive'],
-    ['nocturnal','Nocturnal'],['diurnal','Diurnal'],['crepuscular','Crepuscular'],
+    ['nocturnal','Nocturnal'],['diurnal','Diurnal'],['crepuscular','Crepuscular'],['cathemeral','Cathemeral'],
   ];
   document.getElementById('trait-filters').innerHTML = TRAIT_DEFS.map(([k,label]) =>
     `<span class="tag ${activeTraits.has(k)?'active':''}" data-trait="${k}">${label}</span>`
@@ -1501,6 +1538,7 @@ function renderAnimalList() {
       animal.sleepingPattern === 'Nocturnal'   ? '<span class="tc tc-noct">Noct</span>' : '',
       animal.sleepingPattern === 'Diurnal'     ? '<span class="tc tc-diur">Diur</span>' : '',
       animal.sleepingPattern === 'Crepuscular' ? '<span class="tc tc-crep">Crep</span>' : '',
+      animal.sleepingPattern === 'Cathemeral'  ? '<span class="tc tc-cath">Cath</span>' : '',
       animal.walkable       ? '<span class="tc tc-walk">Walk</span>'      : '',
       animal.interactable   ? '<span class="tc tc-interact">Interact</span>' : '',
     ].filter(Boolean).join('');
@@ -1744,6 +1782,15 @@ if (enclosureInput && enclosureClear) {
   });
 }
 
+// Merge MANUAL_DATA overrides into ANIMALS (sleepingPattern and any future fields).
+if (typeof MANUAL_DATA !== 'undefined') {
+  const manualMap = MANUAL_DATA;
+  ANIMALS.forEach(a => {
+    const m = manualMap[a.id];
+    if (m) Object.assign(a, m);
+  });
+}
+
 renderAll();
 
 const BUILD_TIME = '@@BUILD_TIME@@';
@@ -1795,8 +1842,23 @@ function renderSelectedPanel() {
             sz.adultMinGroup.land !== sz.individual.land ? fmt(sz.adultMinGroup, `Adults ×${sz.adultsMin}`) : '',
             sz.familyMin.land !== sz.adultMinGroup.land  ? fmt(sz.familyMin, 'Min family') : '',
             fmt(sz.familyMax, 'Max family'),
+            (options.accountForJuvenileOverlap && sz.concurrentCohorts > 1)
+              ? fmt(sz.familyMaxOverlap, `×${sz.concurrentCohorts} litters`) : '',
           ].filter(Boolean).join('');
           return `<div class="sa-sizes">${parts}</div>`;
+        })() : '';
+        const breedingHtml = (options.accountForJuvenileOverlap && sz && animal.gestationTime != null) ? (() => {
+          const GD_PER_MONTH = 90, GD_PER_YEAR = 1080;
+          function fmtAge(days) {
+            if (days >= GD_PER_YEAR) return `${Math.round(days / GD_PER_YEAR)} yr`;
+            return `${Math.round(days / GD_PER_MONTH)} mo`;
+          }
+          const cycle = (animal.gestationTime || 0) + (animal.interBirthTime || 0);
+          if (sz.hasMaturityData) {
+            const n = sz.concurrentCohorts;
+            return `<div class="sa-breeding">Cycle: ${fmtAge(cycle)} · maturity: ${fmtAge(animal.maturityTime)} · <span class="overlap-count">×${n} litter${n!==1?'s':''}</span></div>`;
+          }
+          return `<div class="sa-breeding">Cycle: ${fmtAge(cycle)} · <span class="overlap-missing">no maturityTime</span></div>`;
         })() : '';
         const traitChips = [
           animal.iucn         ? `<span class="tc iucn iucn-${animal.iucn}" title="IUCN Red List: ${iucnLabel(animal.iucn)}">${animal.iucn} — ${iucnLabel(animal.iucn)}</span>` : '',
@@ -1811,6 +1873,7 @@ function renderSelectedPanel() {
           animal.sleepingPattern === 'Nocturnal'   ? '<span class="tc tc-noct">Nocturnal</span>'   : '',
           animal.sleepingPattern === 'Diurnal'     ? '<span class="tc tc-diur">Diurnal</span>'     : '',
           animal.sleepingPattern === 'Crepuscular' ? '<span class="tc tc-crep">Crepuscular</span>' : '',
+          animal.sleepingPattern === 'Cathemeral'  ? '<span class="tc tc-cath">Cathemeral</span>'  : '',
           animal.walkable     ? '<span class="tc tc-walk">Walkable</span>'     : '',
           animal.interactable ? '<span class="tc tc-interact">Interactable</span>' : '',
         ].filter(Boolean).join('');
@@ -1826,6 +1889,7 @@ function renderSelectedPanel() {
             </div>
             ${traitChips ? `<div class="animal-traits" style="margin-top:5px">${traitChips}</div>` : ''}
             ${sizeHtml}
+            ${breedingHtml}
           </div>
           <button class="remove-btn" data-remove="${animal.id}" title="Remove">✕</button>
         </div>`;
