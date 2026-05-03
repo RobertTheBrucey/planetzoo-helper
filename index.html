@@ -240,6 +240,14 @@
     border-color: var(--selected-border);
     color: var(--text-bright);
   }
+  .tag.common {
+    border-color: var(--green);
+    box-shadow: 0 0 4px rgba(58, 125, 68, 0.3);
+  }
+  .tag.present {
+    border-color: var(--gold);
+    box-shadow: 0 0 4px rgba(201, 168, 76, 0.3);
+  }
   
   .filter-buttons {
     display: flex;
@@ -635,6 +643,11 @@
     border: 1px solid rgba(78,158,90,0.3);
     color: #7ed08a;
   }
+  .hc-region {
+    background: rgba(132,80,174,0.18);
+    border: 1px solid rgba(152,108,194,0.25);
+    color: #c3a0e3;
+  }
 
   .remove-btn {
     background: transparent;
@@ -915,6 +928,11 @@
         </div>
       </div>
 
+      <div class="filter-group">
+        <div class="section-title">Regions</div>
+        <div class="tag-group" id="region-filters"></div>
+      </div>
+
     </div>
   </div>
 
@@ -974,6 +992,7 @@ let selectedIds = new Set();
 let activeIucn = new Set();
 let activePacks = new Set();
 let activeBiomes = new Set();
+let activeRegions = new Set();
 
 PACKS.forEach(p => activePacks.add(p));
 let activeContinents = new Set();
@@ -981,6 +1000,7 @@ let activeTraits = new Set();
 let options = {
   allowIncompatContinent: false,
   allowIncompatBiome: false,
+  allowIncompatRegion: false,
   allowIncompatTemp: false,
   allowIncompatTerrain: false,
   allowIncompatCoverage: false,
@@ -1280,6 +1300,26 @@ function getCombinedBiomes() {
   return common;
 }
 
+function getCombinedRegions() {
+  const sel = getSelectedAnimals();
+  const allRegions = new Set(ANIMALS.flatMap(a => a.regions || []));
+  if (!sel.length) return allRegions;
+  const restricted = sel.filter(a => (a.regions || []).length > 0);
+  if (!restricted.length) return allRegions;
+  if (options.allowIncompatRegion) {
+    const union = new Set();
+    restricted.forEach(a => (a.regions || []).forEach(r => union.add(r)));
+    return union;
+  }
+  let common = new Set(restricted[0].regions || []);
+  for (const a of restricted.slice(1)) {
+    for (const r of [...common]) {
+      if (!(a.regions || []).includes(r)) common.delete(r);
+    }
+  }
+  return common;
+}
+
 function isCompatibleWith(animal) {
   const sel = getSelectedAnimals();
   if (!sel.length) return true;
@@ -1291,6 +1331,11 @@ function isCompatibleWith(animal) {
   if (!options.allowIncompatBiome && animal.biomes.length > 0) {
     const commonB = getCombinedBiomes();
     const overlap = animal.biomes.some(b => commonB.has(b));
+    if (!overlap) return false;
+  }
+  if (!options.allowIncompatRegion && (animal.regions || []).length > 0) {
+    const commonR = getCombinedRegions();
+    const overlap = (animal.regions || []).some(r => commonR.has(r));
     if (!overlap) return false;
   }
   if (!options.allowIncompatTerrain && !animal.exhibit) {
@@ -1348,6 +1393,7 @@ function passesFilters(animal) {
   if (activePacks.size && !activePacks.has(animal.pack)) return false;
   if (activeIucn.size && !activeIucn.has(animal.iucn || '')) return false;
   if (activeContinents.size && !animal.continents.some(c => activeContinents.has(c))) return false;
+  if (activeRegions.size && !(animal.regions || []).some(r => activeRegions.has(r))) return false;
   if (activeBiomes.size && !animal.biomes.some(b => activeBiomes.has(b))) return false;
   if (enclosureSize !== null && !animal.exhibit && animal.landMin > enclosureSize) return false;
   if (searchQuery) {
@@ -1385,6 +1431,7 @@ function renderFilters() {
   const optDefs = [
     ['allowIncompatContinent','Allow Incompatible Continent'],
     ['allowIncompatBiome','Allow Incompatible Biome'],
+    ['allowIncompatRegion','Allow Incompatible Region'],
     ['allowIncompatTemp','Allow Incompatible Temperature'],
     ['allowIncompatTerrain','Allow Incompatible Terrain'],
     ['allowIncompatCoverage','Allow Incompatible Coverage'],
@@ -1486,7 +1533,7 @@ function renderFilters() {
   // Continents
   document.getElementById('continent-filters').innerHTML = CONTINENTS.map(c => {
     const cls = CONTINENT_COLORS[c] || '';
-    const key = c.toLowerCase().replace(' ','');
+    const key = c.toLowerCase().replace(' ', '');
     return `<span class="tag continent-tag ${activeContinents.has(c)?'active':''}" data-continent="${c}">
       <span class="continent-icon ${cls}"></span>${c}
     </span>`;
@@ -1495,6 +1542,31 @@ function renderFilters() {
     el.addEventListener('click', () => {
       const c = el.dataset.continent;
       activeContinents.has(c) ? activeContinents.delete(c) : activeContinents.add(c);
+      renderAll();
+    });
+  });
+
+  const allRegions = [...new Set(ANIMALS.flatMap(a => a.regions || []))].sort();
+  const sel = getSelectedAnimals();
+  document.getElementById('region-filters').innerHTML = allRegions.map(r => {
+    let cls = `tag ${activeRegions.has(r)?'active':''}`;
+    let indicator = '';
+    if (sel.length > 0) {
+      const selectedWithRegion = sel.filter(a => (a.regions || []).includes(r));
+      if (selectedWithRegion.length === sel.length) {
+        cls += ' common';
+        indicator = ' ✓';
+      } else if (selectedWithRegion.length > 0) {
+        cls += ' present';
+        indicator = ' ◐';
+      }
+    }
+    return `<span class="${cls}" data-region="${r}">${r}${indicator}</span>`;
+  }).join('');
+  document.querySelectorAll('[data-region]').forEach(el => {
+    el.addEventListener('click', () => {
+      const r = el.dataset.region;
+      activeRegions.has(r) ? activeRegions.delete(r) : activeRegions.add(r);
       renderAll();
     });
   });
@@ -1590,6 +1662,7 @@ function renderRightPanel() {
 
   const combinedContinents = getCombinedContinents();
   const combinedBiomes = getCombinedBiomes();
+  const combinedRegions = getCombinedRegions();
 
   // Find enrichment groups active in selection
   const enrichmentGroups = findEnrichmentGroups(sel);
@@ -1602,6 +1675,8 @@ function renderRightPanel() {
     if (noContOverlap.length) warnings.push(`Continent mismatch: ${noContOverlap.map(a=>a.name).join(', ')}`);
     const noBiomeOverlap = sel.filter(a => a.biomes.length > 0 && ![...combinedBiomes].some(b => a.biomes.includes(b)));
     if (noBiomeOverlap.length) warnings.push(`Biome mismatch: ${noBiomeOverlap.map(a=>a.name).join(', ')}`);
+    const noRegionOverlap = sel.filter(a => (a.regions || []).length > 0 && ![...combinedRegions].some(r => (a.regions || []).includes(r)));
+    if (noRegionOverlap.length) warnings.push(`Region mismatch: ${noRegionOverlap.map(a=>a.name).join(', ')}`);
   }
 
   const walkableAll  = sel.every(a => a.walkable);
@@ -1631,6 +1706,12 @@ function renderRightPanel() {
             <span class="biome-dot bd-${b.toLowerCase()}" style="width:8px;height:8px;border-radius:50%;display:inline-block;flex-shrink:0"></span>
             ${b}
           </span>`).join('') || '<span style="color:var(--text-dim);font-size:0.75rem;font-style:italic">None in common</span>'}
+        </div>
+      </div>
+      <div class="req-card">
+        <div class="req-card-title">Compatible Regions</div>
+        <div class="req-badges">
+          ${[...combinedRegions].map(r => `<span class="req-badge compatible">${r}</span>`).join('') || '<span style="color:var(--text-dim);font-size:0.75rem;font-style:italic">None in common</span>'}
         </div>
       </div>
       <div class="req-card">
@@ -1685,6 +1766,7 @@ function renderRightPanel() {
             <div class="habitat-chips">
               ${animal.continents.map(c => `<span class="habitat-chip hc-continent">${c}</span>`).join('')}
               ${animal.biomes.map(b => `<span class="habitat-chip hc-biome">${b}</span>`).join('')}
+              ${(animal.regions || []).map(r => `<span class="habitat-chip hc-region">${r}</span>`).join('')}
               ${animal.walkable     ? '<span class="walkable-badge">🚶 Walkable</span>'       : ''}
               ${animal.interactable ? '<span class="interactable-badge">✋ Interactable</span>' : ''}
             </div>
@@ -1921,6 +2003,7 @@ function renderEnclosurePanel() {
 
   const combinedContinents = getCombinedContinents();
   const combinedBiomes = getCombinedBiomes();
+  const combinedRegions = getCombinedRegions();
 
   // Find enrichment groups active in selection
   const enrichmentGroups = findEnrichmentGroups(sel);
@@ -1933,6 +2016,8 @@ function renderEnclosurePanel() {
     if (noContOverlap.length) warnings.push(`Continent mismatch: ${noContOverlap.map(a=>a.name).join(', ')}`);
     const noBiomeOverlap = sel.filter(a => a.biomes.length > 0 && ![...combinedBiomes].some(b => a.biomes.includes(b)));
     if (noBiomeOverlap.length) warnings.push(`Biome mismatch: ${noBiomeOverlap.map(a=>a.name).join(', ')}`);
+    const noRegionOverlap = sel.filter(a => (a.regions || []).length > 0 && ![...combinedRegions].some(r => (a.regions || []).includes(r)));
+    if (noRegionOverlap.length) warnings.push(`Region mismatch: ${noRegionOverlap.map(a=>a.name).join(', ')}`);
   }
 
   const walkableAll  = sel.every(a => a.walkable);
@@ -1964,6 +2049,12 @@ function renderEnclosurePanel() {
             <span class="biome-dot bd-${b.toLowerCase()}" style="width:8px;height:8px;border-radius:50%;display:inline-block;flex-shrink:0"></span>
             ${b}
           </span>`).join('') || '<span style="color:var(--text-dim);font-size:0.75rem;font-style:italic">None in common</span>'}
+        </div>
+      </div>
+      <div class="req-card">
+        <div class="req-card-title">Compatible Regions</div>
+        <div class="req-badges">
+          ${Array.from(combinedRegions).map(r => `<span class="req-badge compatible">${r}</span>`).join('') || '<span style="color:var(--text-dim);font-size:0.75rem;font-style:italic">None in common</span>'}
         </div>
       </div>
       <div class="req-card">
