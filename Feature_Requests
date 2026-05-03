@@ -1,6 +1,6 @@
-Output this info too:
-Attitude Sleeping pattern
+High Priority
+Add option to enforce common region - All animals must have a region in common (not just continent).
+Add a region search to show animals from that region only.
 
-Walkable and interactable are different things, and should be shown and calculated separately. Change the current walkable to interactable.
-Add in filters for Sleeping Pattern, Attitude, Walkable (when extraction has returns these values)
+Low Priority
 Find the images from the game files instead of downloading externally
