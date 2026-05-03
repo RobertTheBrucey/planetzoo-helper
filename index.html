@@ -572,6 +572,19 @@
     background: var(--border);
   }
 
+  .selected-panel-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 16px;
+  }
+  .selected-panel-header .panel-title {
+    margin-bottom: 0;
+    padding-bottom: 0;
+    border-bottom: none;
+  }
+
   .selected-animals {
     display: flex;
     flex-direction: column;
@@ -940,7 +953,7 @@
   <div class="animal-list-section">
     <div class="list-header">
       <input type="text" class="search-box" id="search-box" placeholder="Search animals…">
-      <button class="clear-btn" id="clear-btn">Clear All</button>
+      <button class="clear-btn" id="clear-search-btn">Clear</button>
     </div>
     <div class="animal-scroll" id="animal-list"></div>
   </div>
@@ -1841,9 +1854,10 @@ document.getElementById('search-box').addEventListener('input', e => {
   renderAnimalList();
 });
 
-document.getElementById('clear-btn').addEventListener('click', () => {
-  selectedIds.clear();
-  renderAll();
+document.getElementById('clear-search-btn').addEventListener('click', () => {
+  document.getElementById('search-box').value = '';
+  searchQuery = '';
+  renderAnimalList();
 });
 
 // Ensure the enclosure input elements exist before adding event listeners
@@ -1909,7 +1923,10 @@ function renderSelectedPanel() {
   }
 
   panel.innerHTML = `
-    <div class="panel-title">Selected Animals <span class="count-badge">${sel.length}</span></div>
+    <div class="selected-panel-header">
+      <div class="panel-title">Selected Animals <span class="count-badge">${sel.length}</span></div>
+      <button class="clear-btn" id="clear-btn">Clear All</button>
+    </div>
     <div class="selected-animals">
       ${sel.map(animal => {
         const sz = computeAnimalSizes(animal);
@@ -1985,6 +2002,14 @@ function renderSelectedPanel() {
       renderAll();
     });
   });
+
+  const clearBtn = panel.querySelector('#clear-btn');
+  if (clearBtn) {
+    clearBtn.addEventListener('click', () => {
+      selectedIds.clear();
+      renderAll();
+    });
+  }
 }
 
 function renderEnclosurePanel() {
