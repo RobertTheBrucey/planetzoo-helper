@@ -364,18 +364,19 @@
     color: var(--text-dim);
     white-space: nowrap;
   }
-  .enclosure-input {
-    width: 90px;
+  .enclosure-input, .enclosure-select {
+    width: 100%;
+    max-width: 220px;
     background: var(--bg3);
     border: 1px solid var(--border);
     border-radius: 4px;
-    padding: 4px 8px;
+    padding: 8px 10px;
     color: var(--text);
     font-family: 'Crimson Pro', serif;
     font-size: 0.9rem;
     outline: none;
   }
-  .enclosure-input:focus { border-color: var(--accent-light); }
+  .enclosure-input:focus, .enclosure-select:focus { border-color: var(--accent-light); }
   .enclosure-unit {
     font-size: 0.72rem;
     color: var(--text-dim);
@@ -933,7 +934,16 @@
       </div>
 
       <div class="filter-group">
-        <div class="section-title">Enclosure Size</div>
+        <div class="section-title">Enclosure Size (Total Area)</div>
+        <div class="enclosure-row">
+          <select class="enclosure-select" id="enclosure-tier-select">
+            <option value="individual">Individual</option>
+            <option value="adultMinGroup">Adults (min)</option>
+            <option value="familyMin">Min family</option>
+            <option value="familyMax">Max family</option>
+            <option value="familyMaxOverlap" selected>Max family with concurrent litters</option>
+          </select>
+        </div>
         <div class="enclosure-row">
           <input type="number" class="enclosure-input" id="enclosure-input" min="0" step="10" placeholder="any">
           <span class="enclosure-unit">m²</span>
@@ -1013,7 +1023,7 @@ let activeTraits = new Set();
 let options = {
   allowIncompatContinent: false,
   allowIncompatBiome: false,
-  allowIncompatRegion: false,
+  allowIncompatRegion: true,
   allowIncompatTemp: false,
   allowIncompatTerrain: false,
   allowIncompatCoverage: false,
@@ -1025,6 +1035,7 @@ let options = {
 };
 let searchQuery = '';
 let enclosureSize = null;
+let enclosureSizeTier = 'familyMaxOverlap';
 
 // ===== HELPERS =====
 function getAnimalById(id) { return ANIMALS.find(a => a.id === id); }
@@ -1269,7 +1280,7 @@ function renderTerrainSection(sel) {
       </tr>`;
     }
     enclosureSection = `<hr class="terrain-divider">
-      <div class="selected-header" style="margin-bottom:4px">Habitat Sizes${sizes.length > 1 ? ' <span style="font-weight:400;font-size:0.7rem;color:var(--text-dim)">(highest requirement across selected animals)</span>' : ''}</div>
+      <div class="selected-header" style="margin-bottom:4px">Enclosure Size Requirements${sizes.length > 1 ? ' <span style="font-weight:400;font-size:0.7rem;color:var(--text-dim)">(highest requirement across selected animals)</span>' : ''}</div>
       <table class="size-table">
         <tr class="size-row" style="border-bottom:1px solid var(--border);padding-bottom:4px">
           <th class="size-td-label" style="padding-bottom:5px"></th>
@@ -1408,7 +1419,13 @@ function passesFilters(animal) {
   if (activeContinents.size && !animal.continents.some(c => activeContinents.has(c))) return false;
   if (activeRegions.size && !(animal.regions || []).some(r => activeRegions.has(r))) return false;
   if (activeBiomes.size && !animal.biomes.some(b => activeBiomes.has(b))) return false;
-  if (enclosureSize !== null && !animal.exhibit && animal.landMin > enclosureSize) return false;
+  if (enclosureSize !== null && !animal.exhibit) {
+    const sizes = computeAnimalSizes(animal);
+    if (!sizes) return false;
+    const tier = sizes[enclosureSizeTier] || sizes.familyMaxOverlap;
+    const total = tier.land + tier.aquatic;
+    if (total > enclosureSize) return false;
+  }
   if (searchQuery) {
     const q = searchQuery.toLowerCase();
     if (!animal.name.toLowerCase().includes(q) && !animal.latin.toLowerCase().includes(q)) return false;
@@ -1452,7 +1469,6 @@ function renderFilters() {
     ['hideIncompat','Hide Incompatible Animals'],
     ['includeExhibit','Include Exhibit Animals'],
     ['showOnlyEnrichment','Show Only Enrichment Matches'],
-    ['accountForJuvenileOverlap','Concurrent Litters'],
   ];
   optRow.innerHTML = optDefs.map(([k,label]) => `
     <label class="toggle-row">
@@ -1610,6 +1626,12 @@ function renderAnimalList() {
     const enrichMatch = getEnrichmentMatch(animal, sel);
     const heartCls = enrichMatch === 'mutual' ? 'mutual' : enrichMatch === 'one-way' ? 'one-way' : '';
     const heartTitle = enrichMatch === 'mutual' ? 'Mutual enrichment' : enrichMatch === 'one-way' ? 'One-way enrichment' : 'Has enrichment partners';
+    const animalSizes = computeAnimalSizes(animal);
+    const sizeRangeText = animalSizes ? (() => {
+      const minTotal = animalSizes.individual.land + animalSizes.individual.aquatic;
+      const maxTotal = animalSizes.familyMaxOverlap.land + animalSizes.familyMaxOverlap.aquatic;
+      return minTotal === maxTotal ? `${minTotal.toLocaleString()} m²` : `${minTotal.toLocaleString()}–${maxTotal.toLocaleString()} m²`;
+    })() : '';
     const traitChips = [
       animal.iucn           ? `<span class="tc iucn iucn-${animal.iucn}" title="IUCN Red List: ${iucnLabel(animal.iucn)}">${animal.iucn}</span>` : '',
       animal.isPredator     ? '<span class="tc tc-pred">Pred</span>'   : '',
@@ -1632,7 +1654,7 @@ function renderAnimalList() {
         <img class="animal-img-thumb" src="${getImgUrl(animal)}" alt="${animal.name}" loading="lazy" onerror="this.src='data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 36 36%22><rect fill=%22%231c2330%22 width=%2236%22 height=%2236%22/><text x=%2218%22 y=%2224%22 font-size=%2218%22 text-anchor=%22middle%22>🐾</text></svg>'">
         <div class="animal-name-block">
           <div class="animal-common">${animal.name}</div>
-          <div class="animal-latin">${animal.latin}${animal.landMin ? `<span class="land-chip">${animal.landMin}m²</span>` : ''}</div>
+          <div class="animal-latin">${animal.latin}${sizeRangeText ? `<span class="land-chip">${sizeRangeText}</span>` : ''}</div>
           ${traitChips ? `<div class="animal-traits">${traitChips}</div>` : ''}
         </div>
         <div class="animal-icons">
@@ -1861,10 +1883,16 @@ document.getElementById('clear-search-btn').addEventListener('click', () => {
 });
 
 // Ensure the enclosure input elements exist before adding event listeners
+const enclosureTierSelect = document.getElementById('enclosure-tier-select');
 const enclosureInput = document.getElementById('enclosure-input');
 const enclosureClear = document.getElementById('enclosure-clear');
 
-if (enclosureInput && enclosureClear) {
+if (enclosureTierSelect && enclosureInput && enclosureClear) {
+  enclosureTierSelect.addEventListener('change', e => {
+    enclosureSizeTier = e.target.value;
+    renderAnimalList();
+  });
+
   enclosureInput.addEventListener('input', e => {
     const v = parseFloat(e.target.value);
     enclosureSize = (!e.target.value || isNaN(v) || v <= 0) ? null : v;
