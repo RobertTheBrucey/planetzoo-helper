@@ -1032,7 +1032,8 @@ let options = {
   includeExhibit: false,
   showOnlyEnrichment: false,
   accountForJuvenileOverlap: true,
-  showOnlyGuestAccess: false,
+  showOnlyWalkable: false,
+  showOnlyInteractable: false,
 };
 let searchQuery = '';
 let enclosureSize = null;
@@ -1431,7 +1432,8 @@ function passesFilters(animal) {
     const q = searchQuery.toLowerCase();
     if (!animal.name.toLowerCase().includes(q) && !animal.latin.toLowerCase().includes(q)) return false;
   }
-  if (options.showOnlyGuestAccess && !animal.walkable && !animal.interactable) return false;
+  if (options.showOnlyWalkable && !animal.walkable) return false;
+  if (options.showOnlyInteractable && !animal.interactable) return false;
   if (activeTraits.size) {
     const checks = {
       interactable: () => !!animal.interactable,
@@ -1471,7 +1473,8 @@ function renderFilters() {
     ['hideIncompat','Hide Incompatible Animals'],
     ['includeExhibit','Include Exhibit Animals'],
     ['showOnlyEnrichment','Show Only Enrichment Matches'],
-    ['showOnlyGuestAccess','Show Only Guest Walkthrough/Interaction'],
+    ['showOnlyWalkable','Show Only Guest Walkthrough'],
+    ['showOnlyInteractable','Show Only Guest Interaction'],
   ];
   optRow.innerHTML = optDefs.map(([k,label]) => `
     <label class="toggle-row">
