@@ -1683,7 +1683,6 @@ function renderAnimalList() {
       if (selectedIds.has(id)) {
         selectedIds.delete(id);
       } else {
-        if (!isCompatibleWith(animal) && !options.allowIncompatContinent && !options.allowIncompatBiome) return;
         selectedIds.add(id);
       }
       renderAll();
