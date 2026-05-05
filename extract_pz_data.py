@@ -513,16 +513,17 @@ def query_enrichment(conn: sqlite3.Connection) -> dict:
 
 
 def query_barrier(conn: sqlite3.Connection) -> dict:
-    """BarrierRequirements (in zoopedia db) → barrier grade and height."""
+    """BarrierRequirements (in zoopedia db) → barrier grade, height, and climbProof flag."""
     if not table_exists(conn, "BarrierRequirements"):
         return {}
     out = {}
     for row in conn.execute(
-        "SELECT Species, Grade, MinHeight FROM BarrierRequirements WHERE Grade IS NOT NULL"
+        "SELECT Species, Grade, MinHeight, ClimbProof FROM BarrierRequirements WHERE Grade IS NOT NULL"
     ):
         out[row["Species"]] = {
-            "grade":  int(row["Grade"]),
-            "height": float(row["MinHeight"]),
+            "grade":      int(row["Grade"]),
+            "height":     float(row["MinHeight"]),
+            "climbProof": bool(row["ClimbProof"]),
         }
     return out
 
@@ -986,10 +987,20 @@ def format_js_entry(animal: dict, loc_map: dict) -> str:
     biomes     = sorted(animal.get("biomes_from_game", []))
     continents = sorted(animal.get("continents_from_game", []))
 
-    # Barrier: FDB BarrierRequirements first (most packs), loc text fallback (e.g. Content17).
-    bar = animal.get("barrier") or {}
-    if not bar.get("grade") and loc.get("barrier"):
-        bar = loc["barrier"]
+    # Barrier: merge FDB (grade + climbProof) with loc text (height).
+    # FDB MinHeight is wrong for some climb-proof animals; the loc text matches the Zoopedia display.
+    fdb_bar = animal.get("barrier") or {}
+    loc_bar = loc.get("barrier") or {}
+    if fdb_bar.get("grade") is not None:
+        bar = {
+            "grade":      fdb_bar["grade"],
+            "height":     loc_bar.get("height", fdb_bar.get("height")),
+            "climbProof": fdb_bar.get("climbProof", False),
+        }
+    elif loc_bar.get("grade") is not None:
+        bar = loc_bar
+    else:
+        bar = {}
 
     # enrichedBy: convert game IDs to display names using loc data
     raw_enriched   = sorted(animal.get("enrichedBy", []))
@@ -1061,7 +1072,8 @@ def format_js_entry(animal: dict, loc_map: dict) -> str:
         f"snow:{rng(t.get('snow',   [0,100]))}}}"
     )
     if bar.get("grade") is not None and bar.get("height") is not None:
-        barrier_js = f"{{grade:{bar['grade']},height:{bar['height']}}}"
+        cp = ",climbProof:true" if bar.get("climbProof") else ""
+        barrier_js = f"{{grade:{bar['grade']},height:{bar['height']}{cp}}}"
     else:
         barrier_js = "null"
 
