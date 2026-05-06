@@ -512,6 +512,16 @@ def query_enrichment(conn: sqlite3.Connection) -> dict:
     return result
 
 
+def query_size_data(conn: sqlite3.Connection) -> dict:
+    """SizeData → body width (m) per animal, used to determine minimum gate width."""
+    if not table_exists(conn, "SizeData"):
+        return {}
+    out = {}
+    for row in conn.execute("SELECT AnimalType, Width FROM SizeData WHERE Width IS NOT NULL"):
+        out[row["AnimalType"]] = round(float(row["Width"]), 2)
+    return out
+
+
 def query_barrier(conn: sqlite3.Connection) -> dict:
     """BarrierRequirements (in zoopedia db) → barrier grade, height, and climbProof flag."""
     if not table_exists(conn, "BarrierRequirements"):
@@ -1066,6 +1076,7 @@ def format_js_entry(animal: dict, loc_map: dict) -> str:
     can_swim      = animal.get("canSwim",   False)
     deep_diver    = animal.get("deepDiver", False)
     burrower      = animal.get("burrower",  False)
+    body_width    = animal.get("bodyWidth")
 
     terrain_js = (
         f"{{grassS:{rng(t.get('grassS', [0,100]))},"
@@ -1106,6 +1117,7 @@ def format_js_entry(animal: dict, loc_map: dict) -> str:
         + f"isPredator:{tf(is_pred)},wellDefended:{tf(well_defended)},"
         f"trophicLevel:'{trophic}',temperament:'{temperament}',sleepingPattern:'{sleeping_pattern}',"
         f"climber:{tf(climber)},canSwim:{tf(can_swim)},deepDiver:{tf(deep_diver)},burrower:{tf(burrower)},"
+        f"bodyWidth:{js_opt_num(body_width)},"
         f"barrier:{barrier_js}}},"
     )
 
@@ -1128,6 +1140,7 @@ def extract_all(cobra_tools: Path, game_dir: Path, extract_root: Path) -> tuple[
     terrain_map:         dict[str, dict]  = {}
     habitat_map:         dict[str, dict]  = {}  # plants + optional temp
     space_map:           dict[str, dict]  = {}  # land/aquatic/climb/shelter space
+    size_data_map:       dict[str, float] = {}  # body width (m) for gate sizing
     barrier_map:         dict[str, dict]  = {}
     interactable_set:    set[str]         = set()
     walkable_set:        set[str]         = set()
@@ -1165,6 +1178,7 @@ def extract_all(cobra_tools: Path, game_dir: Path, extract_root: Path) -> tuple[
                 continue
             try:
                 if fname.endswith("animals.fdb"):
+                    size_data_map.update(query_size_data(conn))
                     terrain_map.update(query_terrain(conn))
                     habitat_map.update(query_habitat(conn))
                     space_map.update(query_space(conn))
@@ -1327,6 +1341,7 @@ def extract_all(cobra_tools: Path, game_dir: Path, extract_root: Path) -> tuple[
             record["deepDiver"]            = beh_data.get("deepDiver", False)
             record["burrower"]             = beh_data.get("burrower",  False)
             record["barrier"]              = barrier_map.get(game_id, {})
+            record["bodyWidth"]            = size_data_map.get(game_id)
 
         gid_lower = game_id.lower()
         record["iucn"] = (
