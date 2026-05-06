@@ -1355,6 +1355,116 @@ def extract_all(cobra_tools: Path, game_dir: Path, extract_root: Path) -> tuple[
 
 
 # ---------------------------------------------------------------------------
+# Image extraction (AnimalSpeciesZoopedia OVLs)
+# ---------------------------------------------------------------------------
+
+_ZOOPEDIA_IMG_PREFIX = "speciesimagezoopedia_"
+
+# Game filename suffix → app img id, for cases where normalised names diverge.
+_GAME_IMG_OVERRIDES: dict[str, str] = {
+    "amazongiantcentipede":          "amazonian_giant_centipede",
+    "antilleaniguana":               "lesser_antillean_iguana",
+    "brazilliansalmonpinktarantula": "brazilian_salmon_pink_tarantula",
+    "brazilianwanderingspider":      "brazilian_wandering_spider",
+    "pygmyhippo":                    "pygmy_hippopotamus",
+    "africanelephant":               "african_savannah_elephant",
+    "europeanpeacock":               "european_peacock",   # butterfly, not the bird
+    "dungbeetle":                    "sacred_scarab_beetle",
+    "giantleafinsect":               "giant_malaysian_leaf_insect",
+    "babirusa":                      "north_sulawesi_babirusa",
+    "blackwhiteruffedlemur":         "black_and_white_ruffed_lemur",
+    "capuchinmonkey":                "colombian_white_faced_capuchin_monkey",
+    "cassowary":                     "southern_cassowary",
+    "hillradnor":                    "hill_radnor_sheep",
+    "pallascat":                     "pallass_cat",
+    "peredavidsdeer":                "pre_davids_deer",
+    "prairiedog":                    "black_tailed_prairie_dog",
+    "southernwhiterhino":            "southern_white_rhinoceros",
+    "standarddonkey":                "american_standard_donkey",
+}
+
+
+def _find_zoopedia_img_ovls(game_dir: Path) -> list[Path]:
+    ovl_root = game_dir / "win64" / "ovldata"
+    ovls: list[Path] = []
+    for content_dir in sorted(ovl_root.iterdir()):
+        if not content_dir.is_dir():
+            continue
+        for ovl in sorted(content_dir.glob("UI/Textures/AnimalSpeciesZoopedia*/*.ovl")):
+            ovls.append(ovl)
+    return ovls
+
+
+def _match_game_img(stem: str, app_index: dict[str, str]) -> str | None:
+    if stem in _GAME_IMG_OVERRIDES:
+        return _GAME_IMG_OVERRIDES[stem]
+    if stem in app_index:
+        return app_index[stem]
+    if stem.endswith("s") and stem[:-1] in app_index:
+        return app_index[stem[:-1]]
+    return None
+
+
+def extract_images(
+    cobra_tools: Path,
+    game_dir:    Path,
+    img_dir:     Path,
+    all_app_ids: list[str],
+    overwrite:   bool = False,
+) -> None:
+    """
+    Extract Zoopedia portrait PNGs from game AnimalSpeciesZoopedia OVLs into img_dir.
+    Skips IDs that already have a file in img_dir unless overwrite=True.
+    """
+    img_dir.mkdir(exist_ok=True)
+    existing = {p.stem for p in img_dir.glob("*.png")}
+
+    target_ids = set(all_app_ids) if overwrite else {i for i in all_app_ids if i not in existing}
+
+    if not target_ids:
+        print("Images: all portraits already present — skipping.")
+        return
+
+    app_index = {aid.replace("_", ""): aid for aid in all_app_ids}
+    ovls      = _find_zoopedia_img_ovls(game_dir)
+    print(f"Images: {len(target_ids)} missing portrait(s); extracting from {len(ovls)} OVL(s) …")
+
+    found:     dict[str, Path] = {}
+    unmatched: list[str]       = []
+
+    with tempfile.TemporaryDirectory(prefix="pz_zoopedia_") as tmp:
+        tmp_path = Path(tmp)
+
+        for ovl in ovls:
+            pack_name = ovl.parent.parent.parent.parent.name
+            out_dir   = tmp_path / pack_name
+            result    = _run_cobra_extract(cobra_tools, ovl, out_dir)
+            if "SUCCESS | Extracting succeeded" not in result.stdout:
+                print(f"  WARNING: image extraction failed for {pack_name}")
+
+            for png in sorted(out_dir.glob(f"{_ZOOPEDIA_IMG_PREFIX}*.png")):
+                stem   = png.stem[len(_ZOOPEDIA_IMG_PREFIX):]
+                if stem == "none":
+                    continue
+                app_id = _match_game_img(stem, app_index)
+                if app_id is None:
+                    unmatched.append(stem)
+                    continue
+                if app_id in target_ids and app_id not in found:
+                    found[app_id] = png
+
+        copied = 0
+        for app_id, src in sorted(found.items()):
+            shutil.copy2(src, img_dir / f"{app_id}.png")
+            copied += 1
+
+    still_missing = sorted(target_ids - set(found))
+    print(f"Images: copied {copied} portrait(s).")
+    if still_missing:
+        print(f"Images: {len(still_missing)} still missing: {', '.join(still_missing)}")
+
+
+# ---------------------------------------------------------------------------
 # Entry point
 # ---------------------------------------------------------------------------
 
@@ -1390,6 +1500,14 @@ def main():
     parser.add_argument(
         "--discover", action="store_true",
         help="Dump all FDB table/column names (filtered for age/maturity keywords) to discover schema",
+    )
+    parser.add_argument(
+        "--skip-images", action="store_true",
+        help="Do not extract animal portrait images from game files",
+    )
+    parser.add_argument(
+        "--images-all", action="store_true",
+        help="Re-extract all portrait images, even those already present in img/",
     )
     args = parser.parse_args()
 
@@ -1513,6 +1631,16 @@ def main():
         print(f"\nAnimals with no latin name ({len(missing_latin)}):")
         for gid in missing_latin:
             print(f"  {gid}")
+
+    # Extract portrait images from AnimalSpeciesZoopedia OVLs
+    if not args.skip_images:
+        all_app_ids = [
+            display_to_app_id(game_id_to_display(gid, loc_map))
+            for gid in sorted(animals)
+        ]
+        img_dir = Path(__file__).parent / "img"
+        print()
+        extract_images(cobra_tools, game_dir, img_dir, all_app_ids, overwrite=args.images_all)
 
 
 if __name__ == "__main__":
