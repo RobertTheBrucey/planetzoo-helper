@@ -652,10 +652,11 @@ def query_fertility(conn: sqlite3.Connection) -> dict:
         animal = d["AnimalType"]
         entry: dict = {}
         for col, key, fn in [
-            ("MinLitterSize",     "minLitterSize",  lambda v: int(v)),
-            ("MaxLitterSize",     "maxLitterSize",  lambda v: int(v)),
-            ("GestationTime",     "gestationTime",  lambda v: int(round(v))),
-            ("InterBirthTime",    "interBirthTime", lambda v: int(round(v))),
+            ("MinLitterSize",          "minLitterSize",          lambda v: int(v)),
+            ("MaxLitterSize",          "maxLitterSize",          lambda v: int(v)),
+            ("GestationTime",          "gestationTime",          lambda v: int(round(v))),
+            ("InterBirthTime",         "interBirthTime",         lambda v: int(round(v))),
+            ("ZoopediaReproduction",   "zoopediaReproduction",   str),
         ]:
             if col in cols and d.get(col) is not None:
                 entry[key] = fn(d[col])
@@ -673,8 +674,9 @@ def query_gender_ratios(conn: sqlite3.Connection) -> dict:
 
     *Single = max of that sex in a single-sex group.
     *Both = max of that sex in a mixed-sex group.
-    MaxFemalesBoth is used with MaxLitterSize to compute the max juvenile
-    count when deriving the correct landMinGroup.
+    MaxFemalesBoth is the max females that can be present in a mixed group;
+    for alpha pair species only 1 female breeds regardless of group size.
+    DominantSex may indicate restricted breeding (e.g. dominant male/female).
     """
     if not table_exists(conn, "DesiredGenderRatios"):
         return {}
@@ -689,9 +691,10 @@ def query_gender_ratios(conn: sqlite3.Connection) -> dict:
             ("MaxFemalesSingle", "maxFemalesSingle"),
             ("MaxMalesBoth",     "maxMalesBoth"),
             ("MaxFemalesBoth",   "maxFemalesBoth"),
+            ("DominantSex",      "dominantSex"),
         ]:
             if col in cols and d.get(col) is not None:
-                entry[key] = int(d[col])
+                entry[key] = int(d[col]) if key != "dominantSex" else str(d[col])
         if entry:
             out[animal] = entry
     return out
@@ -1053,6 +1056,7 @@ def format_js_entry(animal: dict, loc_map: dict) -> str:
     max_f_single  = animal.get("maxFemalesSingle")
     max_m_both    = animal.get("maxMalesBoth")
     max_f_both    = animal.get("maxFemalesBoth")
+    alpha_pair    = animal.get("alphaPair", False)
     is_pred       = animal.get("isPredator", False)
     well_defended = animal.get("wellDefended", False)
     trophic       = animal.get("adultTrophicLevel", "")
@@ -1098,7 +1102,8 @@ def format_js_entry(animal: dict, loc_map: dict) -> str:
         f"maturityTime:{js_opt_num(maturity)},"
         f"maxMalesSingle:{js_opt_num(max_m_single)},maxFemalesSingle:{js_opt_num(max_f_single)},"
         f"maxMalesBoth:{js_opt_num(max_m_both)},maxFemalesBoth:{js_opt_num(max_f_both)},"
-        f"isPredator:{tf(is_pred)},wellDefended:{tf(well_defended)},"
+        + (f"alphaPair:true," if alpha_pair else "")
+        + f"isPredator:{tf(is_pred)},wellDefended:{tf(well_defended)},"
         f"trophicLevel:'{trophic}',temperament:'{temperament}',sleepingPattern:'{sleeping_pattern}',"
         f"climber:{tf(climber)},canSwim:{tf(can_swim)},deepDiver:{tf(deep_diver)},burrower:{tf(burrower)},"
         f"barrier:{barrier_js}}},"
@@ -1250,13 +1255,21 @@ def extract_all(cobra_tools: Path, game_dir: Path, extract_root: Path) -> tuple[
             max_females_both = gender_data.get("maxFemalesBoth")
             max_litter       = fertility_data.get("maxLitterSize")
 
-            # Compute family-group maximum space (largest group including juveniles):
-            # Total animals = MaxPopulation adults + (MaxFemalesBoth × MaxLitterSize) juveniles
+            # Detect alpha pair mating: only the dominant pair breeds regardless of group size.
+            # Sources: zoopedia_dominance_ text and ZoopediaReproduction field.
+            # Both may contain "alpha" for pack canids, meerkats, etc.
+            dominance_text = loc_map.get(game_id.lower(), {}).get("dominance", "")
+            repro_text     = fertility_data.get("zoopediaReproduction", "") or ""
+            alpha_pair     = "alpha" in (dominance_text + repro_text).lower()
+
+            # Compute family-group maximum space (largest group including juveniles).
+            # For alpha pair species, only 1 female breeds; otherwise all MaxFemalesBoth breed.
             # landMinGroup = MinimumSpace + SpacePerAdditionalAnimal × (total − 1)
             # Validated against Villanelle's spreadsheet: Aardvark → 330 + 60×(2+1×1−1) = 450 ✓
             if spa is not None and adults_max is not None:
-                juveniles      = (max_females_both or 0) * (max_litter or 0)
-                total_max      = adults_max + juveniles
+                breeding_females = 1 if alpha_pair else (max_females_both or 0)
+                juveniles        = breeding_females * (max_litter or 0)
+                total_max        = adults_max + juveniles
                 land_min_group: int | None = land_min + spa * max(0, total_max - 1)
             else:
                 land_min_group = None
@@ -1292,6 +1305,11 @@ def extract_all(cobra_tools: Path, game_dir: Path, extract_root: Path) -> tuple[
             record["maxFemalesSingle"]     = gender_data.get("maxFemalesSingle")
             record["maxMalesBoth"]         = gender_data.get("maxMalesBoth")
             record["maxFemalesBoth"]       = max_females_both
+            record["dominantSex"]          = gender_data.get("dominantSex")
+            # Alpha pair mating: only the dominant pair breeds
+            record["alphaPair"]            = alpha_pair
+            record["dominance"]            = dominance_text or None
+            record["zoopediaReproduction"] = fertility_data.get("zoopediaReproduction") or None
             # Predation profile (from InterspeciesInteractionData)
             record["predatorPrey"]         = pred_data.get("predatorPrey", "")
             record["isPredator"]           = pred_data.get("predatorPrey") == "Predator"

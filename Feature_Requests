@@ -1,5 +1,6 @@
 High Priority
 Alpha pair mating isn't accounted for. For example the African Wild Dog. Check the extracted files to see if that data is readily available, if so update the extraction to extract it, then redo the family size calculations.
+Extract the hitbox size for the purposes of showing the gate width required for each animal.
 
 Low Priority
 Find the images from the game files instead of downloading externally

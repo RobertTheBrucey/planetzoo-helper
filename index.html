@@ -1062,6 +1062,9 @@ function computeAnimalSizes(animal) {
   const aMin   = Math.max(2, animal.adultsMin || 1);
   const aMax   = animal.adultsMax || aMin;
   const fBoth  = animal.maxFemalesBoth || 1;
+  // Alpha pair species: only the dominant pair breeds regardless of group size.
+  // breedingFemales=1 for these; otherwise all females in a mixed group can breed.
+  const breedingFemales = animal.alphaPair ? 1 : fBoth;
   const litMax = animal.maxLitterSize || 0;
   const litMin = animal.minLitterSize || litMax;
   const aqBase = animal.aquaticMin || 0;
@@ -1069,7 +1072,7 @@ function computeAnimalSizes(animal) {
   function land(n) { return base + spa * Math.max(0, n - 1); }
   function aq(n)   { return aqBase > 0 ? aqBase + aqPer * Math.max(0, n - 1) : 0; }
   const nFamMin = aMin + litMin;
-  const nFamMax = aMax + fBoth * litMax;
+  const nFamMax = aMax + breedingFemales * litMax;
 
   // Concurrent juvenile cohorts: how many litter generations can coexist in the enclosure
   // at maximum (when the oldest juveniles haven't matured by the time the next litter arrives).
@@ -1080,7 +1083,7 @@ function computeAnimalSizes(animal) {
     const cycle = animal.gestationTime + animal.interBirthTime;
     if (cycle > 0) concurrentCohorts = Math.max(1, Math.ceil(animal.maturityTime / cycle));
   }
-  const nFamMaxOverlap = aMax + fBoth * litMax * concurrentCohorts;
+  const nFamMaxOverlap = aMax + breedingFemales * litMax * concurrentCohorts;
 
   return {
     individual:       { land: land(1),              aquatic: aq(1) },
@@ -1088,7 +1091,7 @@ function computeAnimalSizes(animal) {
     familyMin:        { land: land(nFamMin),         aquatic: aq(nFamMin) },
     familyMax:        { land: land(nFamMax),         aquatic: aq(nFamMax) },
     familyMaxOverlap: { land: land(nFamMaxOverlap),  aquatic: aq(nFamMaxOverlap) },
-    adultsMin: aMin, adultsMax: aMax, fBoth, litMax, litMin,
+    adultsMin: aMin, adultsMax: aMax, fBoth, breedingFemales, litMax, litMin,
     concurrentCohorts, hasMaturityData,
   };
 }
@@ -1977,9 +1980,11 @@ function renderSelectedPanel() {
           const minAdults = animal.adultsMin || sz.adultsMin || 1;
           const maxAdults = animal.adultsMax || sz.adultsMax || minAdults;
           const groupSize = `<div><span class="sa-group-label">Group size</span> <span class="sa-group-val">${minAdults}${maxAdults !== minAdults ? `–${maxAdults}` : ''} adults</span></div>`;
-          const mixedSexNote = (animal.maxMalesBoth === 1 && animal.maxFemalesBoth > 1)
-            ? `<div class="sa-male-note">Mixed-sex groups typically use a single male + up to ${animal.maxFemalesBoth} females</div>`
-            : '';
+          const mixedSexNote = animal.alphaPair
+            ? `<div class="sa-male-note">Alpha pair mating — only the dominant pair breeds</div>`
+            : (animal.maxMalesBoth === 1 && animal.maxFemalesBoth > 1)
+              ? `<div class="sa-male-note">Mixed-sex groups typically use a single male + up to ${animal.maxFemalesBoth} females</div>`
+              : '';
           return `<div class="sa-group-info">${groupSize}${mixedSexNote}</div>`;
         })() : '';
         const sizeHtml = sz ? (() => {
