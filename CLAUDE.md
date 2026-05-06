@@ -44,7 +44,7 @@ Each habitat animal entry in `ANIMALS`:
   pack: 'Standard',            // DLC pack name
   continents: ['Asia'],
   biomes: ['Taiga'],
-  img: 'panthera_uncia',       // Azure blob filename (no extension)
+  img: 'snow_leopard',         // filename in img/ (no extension; equals animal id)
   enrichedBy: ['...'],         // names (not ids) of enrichment partners
   guestWalk: false,
   exhibit: false,              // true = exhibit animal (no terrain/barrier requirements)
@@ -81,19 +81,21 @@ For bulk data extraction from game files, use `extract_pz_data.py`:
 ```
 python extract_pz_data.py --cobra-tools PATH_TO_COBRA_TOOLS --game-dir "C:\Program Files (x86)\Steam\steamapps\common\Planet Zoo"
 ```
-This writes `extracted_animals.json` and `extracted_animals.js` with formatted ANIMALS entries ready to paste in.
+This writes `extracted_animals.json` and `extracted_animals.js` with formatted ANIMALS entries ready to paste in. It also automatically extracts missing animal portrait images from the game's `AnimalSpeciesZoopedia` OVLs into `img/`.
+
+Optional image flags:
+- `--skip-images` — skip image extraction entirely
+- `--images-all` — re-extract all portraits from game files, overwriting any already in `img/`
+
+Requires the `imageio` Python package (`pip install imageio`) for texture conversion.
 
 ## Animal portrait images
 
-Images live in `img/` as `<latin_name>.png` (snake_case of the Latin binomial, e.g. `panthera_uncia.png`). The `img` field in each animal entry is the filename without extension.
+Images live in `img/` as `<app_id>.png` where `app_id` is the animal's `id` field in `animals.js` (e.g. `snow_leopard.png`). The `img` field in each animal entry is the filename without extension.
 
-**To download missing portraits**, run:
-```
-python download_images.py
-```
-This script tries the original Azure CDN (`ewvgenstorage.blob.core.windows.net/planetzoosite/`) first, then falls back to the Planet Zoo wiki. Add new animals to the `MISSING` list at the top of the script before running.
+Portraits are extracted directly from the game's `AnimalSpeciesZoopedia` OVLs by `extract_pz_data.py` (see above). No external downloads are needed.
 
-**To add images manually**: place a `.png` file (JPEG or WebP content is fine — browsers sniff format) named `<latin_snake_case>.png` in `img/`. The `onerror` fallback in `getImgUrl()` shows a paw-print placeholder if the file is missing.
+**To add images manually**: place a `.png` file named `<app_id>.png` in `img/`. The `onerror` fallback in `getImgUrl()` shows a paw-print placeholder if the file is missing.
 
 ## External resources
 

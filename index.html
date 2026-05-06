@@ -1220,6 +1220,8 @@ function renderTerrainSection(sel) {
   const barrierGrade     = barrierAnimals.length ? Math.max(...barrierAnimals.map(a => a.barrier.grade))  : null;
   const barrierHeight    = barrierAnimals.length ? Math.max(...barrierAnimals.map(a => a.barrier.height)) : null;
   const barrierClimbProof = barrierAnimals.some(a => a.barrier.climbProof);
+  const gateWidthAnimals = nonEx.filter(a => a.bodyWidth != null);
+  const gateWidth = gateWidthAnimals.length ? Math.max(...gateWidthAnimals.map(a => a.bodyWidth)) : null;
   const barrierSection = barrierGrade !== null ? `
     <hr class="terrain-divider">
     <div class="selected-header" style="margin-bottom:4px">Barrier Requirements</div>
@@ -1235,6 +1237,10 @@ function renderTerrainSection(sel) {
       <div class="barrier-item">
         <span class="barrier-item-label">Climb-proof</span>
         <span class="barrier-item-val">Required</span>
+      </div>` : ''}${gateWidth != null ? `
+      <div class="barrier-item">
+        <span class="barrier-item-label">Gate Width</span>
+        <span class="barrier-item-val">${gateWidth}m</span>
       </div>` : ''}
     </div>` : '';
 
