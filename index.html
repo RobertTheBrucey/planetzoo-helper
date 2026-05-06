@@ -886,6 +886,11 @@
   .sa-size-label { color: var(--text-dim); font-size: 0.65rem; font-family: 'Crimson Pro', serif; }
   .sa-size-val   { color: var(--text-bright); font-weight: 600; }
   .sa-size-aquatic { color: #5aafe0; }
+  .sa-group-info { margin-top: 6px; font-size: 0.72rem; color: var(--text-dim); }
+  .sa-group-info div { margin-top: 2px; }
+  .sa-group-label { color: var(--text-dim); font-size: 0.68rem; font-family: 'Crimson Pro', serif; }
+  .sa-group-val { color: var(--text-bright); font-weight: 600; }
+  .sa-male-note { color: #d4c36c; }
   .sa-breeding { margin-top: 4px; font-size: 0.72rem; color: var(--text-dim); }
   .sa-breeding .overlap-count { color: var(--gold-light); font-weight: 600; }
   .sa-breeding .overlap-missing { color: #666; font-style: italic; }
@@ -1968,6 +1973,15 @@ function renderSelectedPanel() {
     <div class="selected-animals">
       ${sel.map(animal => {
         const sz = computeAnimalSizes(animal);
+        const groupHtml = sz ? (() => {
+          const minAdults = animal.adultsMin || sz.adultsMin || 1;
+          const maxAdults = animal.adultsMax || sz.adultsMax || minAdults;
+          const groupSize = `<div><span class="sa-group-label">Group size</span> <span class="sa-group-val">${minAdults}${maxAdults !== minAdults ? `–${maxAdults}` : ''} adults</span></div>`;
+          const mixedSexNote = (animal.maxMalesBoth === 1 && animal.maxFemalesBoth > 1)
+            ? `<div class="sa-male-note">Mixed-sex groups typically use a single male + up to ${animal.maxFemalesBoth} females</div>`
+            : '';
+          return `<div class="sa-group-info">${groupSize}${mixedSexNote}</div>`;
+        })() : '';
         const sizeHtml = sz ? (() => {
           function fmt(tier, label) {
             const l = tier.land, q = tier.aquatic;
@@ -2020,6 +2034,7 @@ function renderSelectedPanel() {
           <div class="selected-animal-info">
             <div class="selected-animal-name">${animal.name}</div>
             <div class="selected-animal-latin">${animal.latin}</div>
+            ${groupHtml}
             <div class="habitat-chips">
               ${animal.continents.map(c => `<span class="habitat-chip hc-continent">${c}</span>`).join('')}
               ${animal.biomes.map(b => `<span class="habitat-chip hc-biome">${b}</span>`).join('')}
