@@ -652,6 +652,8 @@ def query_fertility(conn: sqlite3.Connection) -> dict:
     Confirmed columns: AnimalType, MinLitterSize, MaxLitterSize, GestationTime,
     InterBirthTime, FertilityValue, InfertileAge, ZoopediaReproduction.
     GestationTime and InterBirthTime are in in-game days.
+    ZoopediaReproduction is a breeding difficulty enum: Easy/Average/Difficult/
+    VeryEasy/VeryDifficult — NOT a mating-system description.
     """
     if not table_exists(conn, "FertilityData"):
         return {}
@@ -1270,11 +1272,16 @@ def extract_all(cobra_tools: Path, game_dir: Path, extract_root: Path) -> tuple[
             max_litter       = fertility_data.get("maxLitterSize")
 
             # Detect alpha pair mating: only the dominant pair breeds regardless of group size.
-            # Sources: zoopedia_dominance_ text and ZoopediaReproduction field.
-            # Both may contain "alpha" for pack canids, meerkats, etc.
-            dominance_text = loc_map.get(game_id.lower(), {}).get("dominance", "")
-            repro_text     = fertility_data.get("zoopediaReproduction", "") or ""
-            alpha_pair     = "alpha" in (dominance_text + repro_text).lower()
+            # Source: zoopedia_dominance_ loc text (ZoopediaReproduction is a difficulty enum,
+            # not a mating-system description, so it is not used for detection here).
+            # Keywords confirmed from game data:
+            #   "alpha"           — explicit alpha pair canids, meerkats, etc.
+            #   "mated pair"      — otters, gibbons, siamangs, red fox
+            #   "leading the family" — north american beaver ("Parents are leading the family")
+            dominance_text = loc_map.get(game_id.lower(), {}).get("dominance", "") or ""
+            alpha_pair     = any(kw in dominance_text.lower() for kw in (
+                "alpha", "mated pair", "leading the family"
+            ))
 
             # Compute family-group maximum space (largest group including juveniles).
             # For alpha pair species, only 1 female breeds; otherwise all MaxFemalesBoth breed.
@@ -1323,7 +1330,9 @@ def extract_all(cobra_tools: Path, game_dir: Path, extract_root: Path) -> tuple[
             # Alpha pair mating: only the dominant pair breeds
             record["alphaPair"]            = alpha_pair
             record["dominance"]            = dominance_text or None
-            record["zoopediaReproduction"] = fertility_data.get("zoopediaReproduction") or None
+            # ZoopediaReproduction is a breeding *difficulty* enum (Easy/Average/Difficult/etc.),
+            # not a mating-system description. Stored for reference only.
+            record["breedingDifficulty"]   = fertility_data.get("zoopediaReproduction") or None
             # Predation profile (from InterspeciesInteractionData)
             record["predatorPrey"]         = pred_data.get("predatorPrey", "")
             record["isPredator"]           = pred_data.get("predatorPrey") == "Predator"
