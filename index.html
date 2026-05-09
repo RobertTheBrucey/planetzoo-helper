@@ -748,6 +748,9 @@
   }
   .enrich-partner-item.enrich-in-sel .enrich-partner-name { color: var(--gold-light); font-weight: 500; }
   .enrich-partner-item.enrich-in-sel .enrich-rel { color: var(--gold); }
+  .enrich-partner-item.enrich-addable { cursor: pointer; }
+  .enrich-partner-item.enrich-addable:hover .enrich-partner-name { color: var(--text-bright); }
+  .enrich-partner-item.enrich-addable:hover .enrich-rel { color: var(--gold-dim); }
   .enrich-type {
     font-size: 0.67rem;
     color: var(--gold-dim);
@@ -2142,7 +2145,7 @@ function renderSelectedPanel() {
             <div class="enrich-partners-list">
               ${enrichPartners.map(({animal: p, mutual}) => {
                 const inSel = sel.some(s => s.id === p.id);
-                return `<div class="enrich-partner-item${inSel ? ' enrich-in-sel' : ''}">
+                return `<div class="enrich-partner-item${inSel ? ' enrich-in-sel' : ' enrich-addable'}" ${inSel ? '' : `data-add="${p.id}"`} title="${inSel ? 'Already in habitat' : `Add ${p.name} to habitat`}">
                   <span class="enrich-rel">${mutual ? '♥' : '♡'}</span>
                   <span class="enrich-partner-name">${p.name}</span>
                   ${mutual ? '<span class="enrich-type">Mutual</span>' : ''}
@@ -2192,6 +2195,13 @@ function renderSelectedPanel() {
         expandedEnrichmentIds.add(id);
       }
       renderSelectedPanel();
+    });
+  });
+
+  panel.querySelectorAll('[data-add]').forEach(el => {
+    el.addEventListener('click', () => {
+      selectedIds.add(el.dataset.add);
+      renderAll();
     });
   });
 
