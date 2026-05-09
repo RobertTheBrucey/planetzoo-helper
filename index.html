@@ -760,6 +760,22 @@
     padding: 0 4px;
     flex-shrink: 0;
   }
+  .enrich-compat-tag {
+    font-size: 0.67rem;
+    border-radius: 3px;
+    padding: 0 4px;
+    flex-shrink: 0;
+  }
+  .enrich-compat-yes {
+    color: var(--green-light);
+    background: rgba(58,125,68,0.12);
+    border: 1px solid rgba(78,158,90,0.25);
+  }
+  .enrich-compat-no {
+    color: var(--red-light);
+    background: var(--incompatible);
+    border: 1px solid var(--incompatible-border);
+  }
 
   /* Enrichment groups */
   .enrichment-section {
@@ -2145,10 +2161,15 @@ function renderSelectedPanel() {
             <div class="enrich-partners-list">
               ${enrichPartners.map(({animal: p, mutual}) => {
                 const inSel = sel.some(s => s.id === p.id);
+                const compat = inSel ? null : isCompatibleWith(p);
+                const compatTag = inSel ? '' : compat
+                  ? '<span class="enrich-compat-tag enrich-compat-yes">Compatible</span>'
+                  : '<span class="enrich-compat-tag enrich-compat-no">Incompatible</span>';
                 return `<div class="enrich-partner-item${inSel ? ' enrich-in-sel' : ' enrich-addable'}" ${inSel ? '' : `data-add="${p.id}"`} title="${inSel ? 'Already in habitat' : `Add ${p.name} to habitat`}">
                   <span class="enrich-rel">${mutual ? '♥' : '♡'}</span>
                   <span class="enrich-partner-name">${p.name}</span>
                   ${mutual ? '<span class="enrich-type">Mutual</span>' : ''}
+                  ${compatTag}
                 </div>`;
               }).join('')}
             </div>
