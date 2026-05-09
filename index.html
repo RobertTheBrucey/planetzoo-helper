@@ -680,6 +680,103 @@
   }
   .remove-btn:hover { border-color: var(--red-light); color: var(--red-light); }
 
+  .card-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    flex-shrink: 0;
+    align-self: flex-start;
+    padding-top: 2px;
+  }
+  .enrich-btn {
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--gold-dim);
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    cursor: pointer;
+    font-size: 0.78rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    transition: all 0.15s;
+  }
+  .enrich-btn:hover { border-color: var(--gold); color: var(--gold); }
+  .enrich-btn.active { border-color: var(--gold); color: var(--gold); background: rgba(201,168,76,0.1); }
+
+  .enrich-expand {
+    margin-top: 8px;
+    padding-top: 8px;
+    border-top: 1px solid rgba(201,168,76,0.15);
+  }
+  .enrich-expand-header {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 6px;
+  }
+  .enrich-expand-title {
+    font-size: 0.7rem;
+    font-family: 'Cinzel', serif;
+    color: var(--gold);
+    letter-spacing: 0.04em;
+  }
+  .enrich-expand-count {
+    font-size: 0.7rem;
+    color: var(--text-dim);
+  }
+  .enrich-partners-list {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+  }
+  .enrich-partner-item {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 0.8rem;
+    color: var(--text-dim);
+  }
+  .enrich-rel {
+    color: var(--gold-dim);
+    font-size: 0.75rem;
+    flex-shrink: 0;
+    width: 12px;
+    text-align: center;
+  }
+  .enrich-partner-item.enrich-in-sel .enrich-partner-name { color: var(--gold-light); font-weight: 500; }
+  .enrich-partner-item.enrich-in-sel .enrich-rel { color: var(--gold); }
+  .enrich-partner-item.enrich-addable { cursor: pointer; }
+  .enrich-partner-item.enrich-addable:hover .enrich-partner-name { color: var(--text-bright); }
+  .enrich-partner-item.enrich-addable:hover .enrich-rel { color: var(--gold-dim); }
+  .enrich-type {
+    font-size: 0.67rem;
+    color: var(--gold-dim);
+    background: rgba(201,168,76,0.08);
+    border: 1px solid rgba(201,168,76,0.15);
+    border-radius: 3px;
+    padding: 0 4px;
+    flex-shrink: 0;
+  }
+  .enrich-compat-tag {
+    font-size: 0.67rem;
+    border-radius: 3px;
+    padding: 0 4px;
+    flex-shrink: 0;
+  }
+  .enrich-compat-yes {
+    color: var(--green-light);
+    background: rgba(58,125,68,0.12);
+    border: 1px solid rgba(78,158,90,0.25);
+  }
+  .enrich-compat-no {
+    color: var(--red-light);
+    background: var(--incompatible);
+    border: 1px solid var(--incompatible-border);
+  }
+
   /* Enrichment groups */
   .enrichment-section {
     margin-bottom: 24px;
@@ -1043,6 +1140,7 @@ let options = {
 let searchQuery = '';
 let enclosureSize = null;
 let enclosureSizeTier = 'familyMaxOverlap';
+let expandedEnrichmentIds = new Set();
 
 // ===== HELPERS =====
 function getAnimalById(id) { return ANIMALS.find(a => a.id === id); }
@@ -1844,6 +1942,19 @@ function renderRightPanel() {
   });
 }
 
+function getEnrichmentPartners(animal) {
+  const partners = [];
+  for (const a of ANIMALS) {
+    if (a.id === animal.id || a.exhibit) continue;
+    const enrichesThis = animal.enrichedBy.includes(a.name);
+    const enrichedByThis = a.enrichedBy.includes(animal.name);
+    if (enrichesThis || enrichedByThis) {
+      partners.push({ animal: a, mutual: enrichesThis && enrichedByThis });
+    }
+  }
+  return partners;
+}
+
 function getEnrichmentMatch(animal, selectedAnimals) {
   if (!selectedAnimals.length) return null;
   let hasMutual = false;
@@ -2039,6 +2150,30 @@ function renderSelectedPanel() {
           animal.walkable     ? '<span class="tc tc-walk">Walkable</span>'     : '',
           animal.interactable ? '<span class="tc tc-interact">Interactable</span>' : '',
         ].filter(Boolean).join('');
+        const enrichPartners = getEnrichmentPartners(animal);
+        const isEnrichExpanded = expandedEnrichmentIds.has(animal.id);
+        const enrichExpandHtml = isEnrichExpanded ? `
+          <div class="enrich-expand">
+            <div class="enrich-expand-header">
+              <span class="enrich-expand-title">Enrichment Partners</span>
+              <span class="enrich-expand-count">(${enrichPartners.length})</span>
+            </div>
+            <div class="enrich-partners-list">
+              ${enrichPartners.map(({animal: p, mutual}) => {
+                const inSel = sel.some(s => s.id === p.id);
+                const compat = inSel ? null : isCompatibleWith(p);
+                const compatTag = inSel ? '' : compat
+                  ? '<span class="enrich-compat-tag enrich-compat-yes">Compatible</span>'
+                  : '<span class="enrich-compat-tag enrich-compat-no">Incompatible</span>';
+                return `<div class="enrich-partner-item${inSel ? ' enrich-in-sel' : ' enrich-addable'}" ${inSel ? '' : `data-add="${p.id}"`} title="${inSel ? 'Already in habitat' : `Add ${p.name} to habitat`}">
+                  <span class="enrich-rel">${mutual ? '♥' : '♡'}</span>
+                  <span class="enrich-partner-name">${p.name}</span>
+                  ${mutual ? '<span class="enrich-type">Mutual</span>' : ''}
+                  ${compatTag}
+                </div>`;
+              }).join('')}
+            </div>
+          </div>` : '';
         return `
         <div class="selected-animal-card">
           <img class="selected-animal-img" src="${getImgUrl(animal)}" alt="${animal.name}" loading="lazy" onerror="this.src='data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 52 52%22><rect fill=%22%231c2330%22 width=%2252%22 height=%2252%22/><text x=%2226%22 y=%2234%22 font-size=%2228%22 text-anchor=%22middle%22>🐾</text></svg>'">
@@ -2053,8 +2188,12 @@ function renderSelectedPanel() {
             ${traitChips ? `<div class="animal-traits" style="margin-top:5px">${traitChips}</div>` : ''}
             ${sizeHtml}
             ${breedingHtml}
+            ${enrichExpandHtml}
           </div>
-          <button class="remove-btn" data-remove="${animal.id}" title="Remove">✕</button>
+          <div class="card-actions">
+            ${enrichPartners.length ? `<button class="enrich-btn${isEnrichExpanded ? ' active' : ''}" data-enrich="${animal.id}" title="${enrichPartners.length} enrichment partner${enrichPartners.length !== 1 ? 's' : ''}">♥</button>` : ''}
+            <button class="remove-btn" data-remove="${animal.id}" title="Remove">✕</button>
+          </div>
         </div>`;
       }).join('')}
     </div>
@@ -2063,6 +2202,26 @@ function renderSelectedPanel() {
   panel.querySelectorAll('[data-remove]').forEach(btn => {
     btn.addEventListener('click', () => {
       selectedIds.delete(btn.dataset.remove);
+      expandedEnrichmentIds.delete(btn.dataset.remove);
+      renderAll();
+    });
+  });
+
+  panel.querySelectorAll('[data-enrich]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const id = btn.dataset.enrich;
+      if (expandedEnrichmentIds.has(id)) {
+        expandedEnrichmentIds.delete(id);
+      } else {
+        expandedEnrichmentIds.add(id);
+      }
+      renderSelectedPanel();
+    });
+  });
+
+  panel.querySelectorAll('[data-add]').forEach(el => {
+    el.addEventListener('click', () => {
+      selectedIds.add(el.dataset.add);
       renderAll();
     });
   });
@@ -2071,6 +2230,7 @@ function renderSelectedPanel() {
   if (clearBtn) {
     clearBtn.addEventListener('click', () => {
       selectedIds.clear();
+      expandedEnrichmentIds.clear();
       renderAll();
     });
   }
