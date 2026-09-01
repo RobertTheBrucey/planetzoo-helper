@@ -1099,7 +1099,7 @@ const CONTINENTS = ['Africa','Asia','Europe','North America','South America','Oc
 const BIOMES = ['Aquatic','Desert','Grassland','Taiga','Temperate','Tropical','Tundra'];
 const PACKS = ['Standard','Arid','Africa','Zookeepers','Barnyard','Europe','North America',
   'Conservation','Arctic','Wetlands','Tropical','Southeast Asia','Grasslands',
-  'South America','Twilight','Aquatic','Australia','Eurasia','Deluxe','Oceania','Americas','Asia'];
+  'South America','Twilight','Aquatic','Australia','Eurasia','Deluxe','Oceania','Americas','Asia','Unknown'];
 
 const CONTINENT_COLORS = {
   'Europe': 'ci-europe','North America': 'ci-namerica','South America': 'ci-samerica',
@@ -1535,9 +1535,9 @@ function passesFilters(animal) {
   if (animal.exhibit && !options.includeExhibit) return false;
   if (activePacks.size && !activePacks.has(animal.pack)) return false;
   if (activeIucn.size && !activeIucn.has(animal.iucn || '')) return false;
-  if (activeContinents.size && !animal.continents.some(c => activeContinents.has(c))) return false;
-  if (activeRegions.size && !(animal.regions || []).some(r => activeRegions.has(r))) return false;
-  if (activeBiomes.size && !animal.biomes.some(b => activeBiomes.has(b))) return false;
+  if (activeContinents.size && animal.continents.length && !animal.continents.some(c => activeContinents.has(c))) return false;
+  if (activeRegions.size && (animal.regions || []).length && !(animal.regions || []).some(r => activeRegions.has(r))) return false;
+  if (activeBiomes.size && animal.biomes.length && !animal.biomes.some(b => activeBiomes.has(b))) return false;
   if (enclosureSize !== null && !animal.exhibit) {
     const sizes = computeAnimalSizes(animal);
     if (!sizes) return false;
